@@ -178,6 +178,20 @@ private class DismissController(
     /** True once a drag decided to close; disables the shared-element "fly back" animation. */
     var dismissed by mutableStateOf(false)
         private set
+    private val shrink = Animatable(1f)
+    /** Extra scale while closing by back / side swipe (the photo shrinks a little as it fades). */
+    val scale: Float get() = shrink.value
+
+    /**
+     * Back, side swipe or the back button: close the same way as a swipe down does (grid picture
+     * at once, no shared-element fly back), with the photo shrinking slightly while it fades.
+     */
+    fun closeNow() {
+        if (dismissed) return
+        dismissed = true
+        close()
+        scope.launch { shrink.animateTo(0.9f, tween(durationMillis = 240, easing = LinearOutSlowInEasing)) }
+    }
     var screenHeight = 0f
 
     /**
@@ -271,13 +285,16 @@ private fun Modifier.closeGestures(
         .graphicsLayer {
             // Follow the finger 1:1 and shrink slightly around the grabbed point.
             val offset = dismiss.offset
-            if (offset == 0f) return@graphicsLayer
+            val extra = dismiss.scale
+            if (offset == 0f && extra == 1f) return@graphicsLayer
             val progress = (offset / size.height).coerceIn(0f, 1f)
             translationY = offset
-            val scale = 1f - 0.35f * progress
+            val scale = (1f - 0.35f * progress) * extra
             scaleX = scale
             scaleY = scale
-            if (size.width > 0f && size.height > 0f)
+            // Closing by back: shrink around the centre; dragging: around the grabbed point.
+            if (offset == 0f) transformOrigin = TransformOrigin.Center
+            else if (size.width > 0f && size.height > 0f)
                 transformOrigin = TransformOrigin(
                     (pivot[2] / size.width).coerceIn(0f, 1f),
                     (pivot[3] / size.height).coerceIn(0f, 1f)
@@ -482,11 +499,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
             EVENT_BACK_PRESS if sheet.isOpen -> sheet.close()
             // Back closes the viewer straight away, also from immersive (UI hidden) mode;
             // the original system-bar style is restored when the screen is disposed.
-            EVENT_BACK_PRESS -> if (!closing) {
-                closing = true
-                restoreStyle()
-                navController.navigateUp()
-            }
+            EVENT_BACK_PRESS -> if (!closing) dismissOffset.closeNow()
             // This must not happen.
             else -> error("Received unexpected event: $request")
         }

@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import com.zs.gallery.R
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.runtime.Composable
@@ -73,10 +75,13 @@ fun ViewerActions(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
             for (action in actions.take(visibleCount)) {
+                // A liked photo shows a solid yellow star (not just a slightly different outline).
+                val liked = action.label == R.string.unlike
                 RoundButton(
-                    icon = action.icon ?: Icons.Outlined.BrokenImage,
+                    icon = if (liked) Icons.Filled.Star else action.icon ?: Icons.Outlined.BrokenImage,
                     contentDescription = stringResource(action.label),
                     enabled = action.enabled,
+                    tint = if (liked) LikedYellow else Color.White,
                     onClick = { onAction(action) }
                 )
             }
@@ -111,12 +116,16 @@ fun ViewerActions(
     }
 }
 
+/** Colour of the star on a liked photo. */
+private val LikedYellow = Color(0xFFFFC83D)
+
 @Composable
 private fun RoundButton(
     icon: ImageVector,
     contentDescription: String?,
     onClick: () -> Unit,
     enabled: Boolean = true,
+    tint: Color = Color.White,
 ) {
     Box(
         contentAlignment = Alignment.Center,
@@ -131,7 +140,7 @@ private fun RoundButton(
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = if (enabled) Color.White else Color.White.copy(alpha = 0.4f),
+            tint = if (enabled) tint else tint.copy(alpha = 0.4f),
             modifier = Modifier.size(26.dp)
         )
     }
