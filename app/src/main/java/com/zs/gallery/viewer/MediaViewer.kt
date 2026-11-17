@@ -377,7 +377,8 @@ private fun Carousel(
                     }
                 }
                 ZoomableAsyncImage(
-                    model = remember(item.id) {
+                    // Keyed by modification time too: a rotated photo reloads right away.
+                    model = remember(item.id, item.dateModified) {
                         // Formats that support tiled (region) decoding: the small MediaStore
                         // thumbnail is enough as telephoto's preview, because the sharp detail
                         // comes from tiles of the original file anyway. That makes the photo
@@ -574,8 +575,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                         navController.navigate(com.zs.gallery.crop.RouteCrop(file.mediaUri))
                     else viewState.onPerformAction(it, ctx.findActivity())
                 },
-                // Images get a fourth button: crop.
-                visibleCount = if (currentFile?.isImage == true) 4 else 3,
+
                 modifier = Modifier.windowInsetsPadding(
                     WindowInsets.systemBars.only(WindowInsetsSides.Bottom + WindowInsetsSides.End)
                 )

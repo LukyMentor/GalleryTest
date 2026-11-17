@@ -176,7 +176,8 @@ dependencies {
 
     // Compose extensions
     implementation(libs.telephoto.zoomable)
-    implementation(libs.telephoto.zoomable.image.coil3) // sharp (sub-sampled) zoom
+    implementation(libs.telephoto.zoomable.image.coil3)
+    implementation(libs.androidx.exifinterface) // sharp (sub-sampled) zoom
     implementation(libs.accompanist.permissions)
     implementation(libs.androidx.koin)
     implementation(libs.chrisbanes.haze)

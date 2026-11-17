@@ -23,6 +23,8 @@ import android.util.Log
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.RotateRight
+import androidx.compose.material.icons.outlined.RotateLeft
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
@@ -86,6 +88,8 @@ private val UN_STAR = Action(R.string.unlike, Icons.TwoTone.Star)
 private val RESTORE = Action(R.string.restore, Icons.Outlined.Restore)
 private val QUICK_SHARE = Action(R.string.beam, Icons.Filled.NearbyShare)
 private val EDIT_IN = Action(R.string.edit_in, Icons.Outlined.Edit)
+private val ROTATE_LEFT = Action(R.string.rotate_left, Icons.Outlined.RotateLeft)
+private val ROTATE_RIGHT = Action(R.string.rotate_right, Icons.Outlined.RotateRight)
 private val USE_AS = Action(R.string.wallpaper, Icons.Outlined.Wallpaper)
 private val GOOGLE_LENS = Action(R.string.lens, Icons.Outlined.DocumentScanner)
 private val MOVE = Action(R.string.move_to, Icons.Outlined.DriveFileMove)
@@ -175,6 +179,8 @@ class MediaViewerViewModel(
                 }
                 EDIT_IN -> resolver.startActivity(EditInIntent(current!!.mediaUri))
                 RENAME -> FileOps.rename(resolver, current ?: return@launch)
+                ROTATE_LEFT, ROTATE_RIGHT ->
+                    FileOps.rotate(resolver, current ?: return@launch, clockwise = value == ROTATE_RIGHT)
                 MOVE, COPY -> {
                     val file = current ?: return@launch
                     val folders = provider.fetchFolders()
@@ -198,19 +204,24 @@ class MediaViewerViewModel(
             }
             // Shown as buttons (the viewer shows the first 3): like, edit, delete.
             this += if (favourite) UN_STAR else STAR
-            // Crop (images): handled by the viewer screen, which opens the crop screen.
-            if (current?.isImage == true) this += com.zs.gallery.crop.CROP
-            this += EDIT_IN
+            val image = current?.isImage == true
+            // Edit (pen): photos open M Gallery's own editor (crop + draw, handled by the viewer
+            // screen); videos go to another app.
+            this += if (image) com.zs.gallery.crop.CROP else EDIT_IN
             this += DELETE
             // In the "⋮" menu.
             this += SHARE
             this += QUICK_SHARE
-            // Wallpaper only makes sense for images.
-            if (current?.isImage == true)
+            if (image) {
+                this += ROTATE_LEFT
+                this += ROTATE_RIGHT
+                // Wallpaper only makes sense for images.
                 this += USE_AS
+            }
             this += MOVE
             this += COPY
             this += RENAME
+            if (image) this += EDIT_IN
         }
     }
 

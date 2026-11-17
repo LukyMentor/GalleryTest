@@ -92,7 +92,7 @@ fun MediaFile(
         val ctx = LocalContext.current
         val thumbPx = with(LocalDensity.current) { THUMB_SIZE.roundToPx() }
         AsyncImage(
-            model = remember(key1 = value.id) {
+            model = remember(value.id, value.dateModified) {
                 ImageRequest.Builder(ctx).apply {
                     data(value.mediaUri)
                     // Stable key: the viewer reuses this thumbnail as its instant placeholder.

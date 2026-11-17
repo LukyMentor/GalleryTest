@@ -216,6 +216,47 @@ object FileOps {
         return copied
     }
 
+    /**
+     * Rotates [file] by 90° in place. JPEG / WebP: only the orientation tag changes (lossless);
+     * PNG (e.g. screenshots): the pixels are turned and saved again (still lossless).
+     */
+    suspend fun rotate(activity: Activity, file: MediaFile, clockwise: Boolean): Boolean {
+        val mime = file.mimeType
+        val exifFormat = mime == "image/jpeg" || mime == "image/webp"
+        if (!exifFormat && mime != "image/png") {
+            activity.toast("This photo format can't be rotated")
+            return false
+        }
+        if (!requestWrite(activity, listOf(file.mediaUri))) return false
+        val resolver = activity.contentResolver
+        val ok = withContext(Dispatchers.IO) {
+            runCatching {
+                if (exifFormat) {
+                    resolver.openFileDescriptor(file.mediaUri, "rw").use { pfd ->
+                        val exif = androidx.exifinterface.media.ExifInterface(requireNotNull(pfd).fileDescriptor)
+                        exif.rotate(if (clockwise) 90 else -90)
+                        exif.saveAttributes()
+                    }
+                } else {
+                    val source = android.graphics.ImageDecoder.createSource(resolver, file.mediaUri)
+                    val bitmap = android.graphics.ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+                        decoder.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+                    }
+                    val matrix = android.graphics.Matrix().apply { postRotate(if (clockwise) 90f else -90f) }
+                    val turned = android.graphics.Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+                    resolver.openOutputStream(file.mediaUri, "wt").use { out ->
+                        turned.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, requireNotNull(out))
+                    }
+                }
+                true
+            }.getOrDefault(false)
+        }
+        if (!ok) activity.toast("Couldn't rotate the photo")
+        // Old (unrotated) pictures must not come back from the in-memory cache.
+        else coil3.SingletonImageLoader.get(activity).memoryCache?.clear()
+        return ok
+    }
+
     /** Asks for a new name (extension kept) and renames [file]. */
     suspend fun rename(activity: Activity, file: MediaFile): Boolean {
         val dot = file.name.lastIndexOf('.')

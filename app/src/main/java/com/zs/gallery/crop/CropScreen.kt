@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Crop
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.size
@@ -100,7 +101,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 /** The viewer's crop button (handled by the viewer screen itself). */
-val CROP = Action(R.string.crop, Icons.Outlined.Crop)
+val CROP = Action(R.string.crop, Icons.Outlined.Edit)
 
 object RouteCrop : Route {
     const val PARAM_URI = "param_uri"
