@@ -198,6 +198,8 @@ class MediaViewerViewModel(
             }
             // Shown as buttons (the viewer shows the first 3): like, edit, delete.
             this += if (favourite) UN_STAR else STAR
+            // Crop (images): handled by the viewer screen, which opens the crop screen.
+            if (current?.isImage == true) this += com.zs.gallery.crop.CROP
             this += EDIT_IN
             this += DELETE
             // In the "⋮" menu.

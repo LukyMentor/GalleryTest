@@ -147,6 +147,7 @@ import com.zs.gallery.common.compose.rememberAcrylicSurface
 import com.zs.gallery.common.compose.shine
 import com.zs.gallery.common.compose.source
 import com.zs.gallery.common.domain
+import androidx.compose.runtime.DisposableEffect
 import com.zs.gallery.common.shapes.EndConcaveShape
 import com.zs.gallery.files.Files
 import com.zs.gallery.files.RouteFiles
@@ -410,6 +411,13 @@ private val navGraphBuilder: NavGraphBuilder.() -> Unit = {
         Settings(viewState = state)
     }
 
+    // Crop
+    composable(com.zs.gallery.crop.RouteCrop) {
+        com.zs.gallery.crop.CropScreen(
+            it.arguments?.getString(com.zs.gallery.crop.RouteCrop.PARAM_ID)?.toLongOrNull() ?: -1L
+        )
+    }
+
     // Viewer
     composable(RouteViewer) {
         val state = koinViewModel<MediaViewerViewModel>()
@@ -577,6 +585,22 @@ fun Home(
 
     // properties
     val style = (activity as SystemFacade).style
+    // Picture of the grid each time a photo opens from it (the viewer draws it behind the photo).
+    DisposableEffect(navController) {
+        var previous: String? = null
+        val listener = androidx.navigation.NavController.OnDestinationChangedListener { _, dest, _ ->
+            val domain = dest.domain
+            val crop = com.zs.gallery.crop.RouteCrop.domain
+            if (domain == RouteViewer.domain && previous != null && previous != RouteViewer.domain && previous != crop)
+                com.zs.gallery.viewer.Backdrop.capture(activity.window)
+            // Left the photo for good (not just to crop it): drop the picture once it has closed.
+            else if (domain != RouteViewer.domain && domain != crop)
+                com.zs.gallery.viewer.Backdrop.clearLater()
+            previous = domain
+        }
+        navController.addOnDestinationChangedListener(listener)
+        onDispose { navController.removeOnDestinationChangedListener(listener) }
+    }
     val primary by navController.primary
     val requiresNavBar = when (style.flagNavBarVisibility) {
         WindowStyle.FLAG_APP_NAV_BAR_HIDDEN -> false
@@ -648,7 +672,10 @@ fun Home(
                     exitTransition = {
                         val from = initialState.tabIndex
                         val to = targetState.tabIndex
-                        if (initialState.destination.domain == RouteViewer.domain) fadeOut(tween(180))
+                        // Back from a photo: the viewer (with the grid picture behind the photo, see
+                        // Backdrop) stays a moment so the real grid settles unseen, then fades.
+                        if (initialState.destination.domain == RouteViewer.domain)
+                            fadeOut(tween(durationMillis = 160, delayMillis = 90))
                         else if (from >= 0 && to >= 0 && from != to)
                             slideOutHorizontally(TabSlideSpec) { w -> if (to > from) -w / 5 else w / 5 } +
                                     fadeOut(TabFadeSpec)
@@ -726,7 +753,13 @@ fun Home(
     // Observe the state of the IMMERSE_VIEW setting
     val immersiveView by activity.observeAsState(Settings.KEY_IMMERSIVE_VIEW)
     val transparentSystemBars by activity.observeAsState(Settings.KEY_TRANSPARENT_SYSTEM_BARS)
-    LaunchedEffect(immersiveView, style, isDark, transparentSystemBars) {
+    // The crop screen is always black: light system-bar icons there, whatever the app mode.
+    val onCrop = current?.destination?.domain == com.zs.gallery.crop.RouteCrop.domain
+    val barStyle = if (onCrop)
+        style + WindowStyle.FLAG_SYSTEM_BARS_APPEARANCE_DARK + WindowStyle.FLAG_SYSTEM_BARS_BG_TRANSPARENT
+    else style
+    LaunchedEffect(immersiveView, barStyle, isDark, transparentSystemBars) {
+        val style = barStyle
         // Get the WindowInsetsController for managing system bars
         val window = activity.window
         val controller = WindowCompat.getInsetsController(window, window.decorView)

@@ -96,6 +96,8 @@ import com.zs.gallery.common.compose.LocalNavController
 import com.zs.gallery.common.compose.LocalSystemFacade
 import com.zs.gallery.common.compose.OverflowMenu
 import com.zs.gallery.common.compose.background
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.onPlaced
 import com.zs.gallery.common.compose.preference
 import com.zs.gallery.common.compose.rememberAcrylicSurface
 import com.zs.gallery.common.compose.shine
@@ -446,6 +448,9 @@ fun MediaViewer(viewState: MediaViewerViewState) {
     }
     dismissOffset.screenHeight = LocalWindowInfo.current.containerSize.height.toFloat()
     val isDragging by remember { derivedStateOf { dismissOffset.offset != 0f } }
+    // Where this screen sits in the window (for drawing the grid picture, see Backdrop).
+    val windowPos = remember { floatArrayOf(0f, 0f) }
+
     // Swipe-up properties sheet (the photo stays still; the sheet follows the finger).
     val sheet = rememberDetailsSheetState()
     val sheetOpen by remember { derivedStateOf { sheet.isOpen } }
@@ -508,12 +513,20 @@ fun MediaViewer(viewState: MediaViewerViewState) {
         contentColor = Color.SignalWhite,
         // Black backdrop that fades out while the photo is dragged down (read in draw phase).
         containerColor = Color.Transparent,
-        modifier = Modifier.drawBehind {
-            // Closing (drag, back or the back button): no black at all, the grid shows at once.
-            if (closing || dismissOffset.dismissed) return@drawBehind
-            val progress = (dismissOffset.offset / (size.height * 0.4f)).coerceIn(0f, 1f)
-            drawRect(Color.Black.copy(alpha = 1f - progress))
-        },
+        modifier = Modifier
+            .onPlaced { windowPos[0] = it.positionInWindow().x; windowPos[1] = it.positionInWindow().y }
+            .drawBehind {
+                val done = closing || dismissOffset.dismissed
+                val progress = (dismissOffset.offset / (size.height * 0.4f)).coerceIn(0f, 1f)
+                // The grid as it was when the photo opened: revealed while dragging, and shown
+                // in full while closing (hiding the real grid settling underneath).
+                val grid = Backdrop.image
+                if (grid != null && (done || progress > 0f))
+                    translate(-windowPos[0], -windowPos[1]) { drawImage(grid) }
+                // Closing: no black at all.
+                if (done) return@drawBehind
+                drawRect(Color.Black.copy(alpha = 1f - progress))
+            },
         // TopAppBar
         topBar = {
             MediaViewerTopAppBar(
@@ -542,7 +555,14 @@ fun MediaViewer(viewState: MediaViewerViewState) {
             ViewerActions(
                 visible = !immersive && !isLoading && !isDragging && !sheetOpen && !closing,
                 actions = viewState.actions,
-                onAction = { viewState.onPerformAction(it, ctx.findActivity()) },
+                onAction = {
+                    val file = currentFile
+                    if (it == com.zs.gallery.crop.CROP && file != null)
+                        navController.navigate(com.zs.gallery.crop.RouteCrop(file.id))
+                    else viewState.onPerformAction(it, ctx.findActivity())
+                },
+                // Images get a fourth button: crop.
+                visibleCount = if (currentFile?.isImage == true) 4 else 3,
                 modifier = Modifier.windowInsetsPadding(
                     WindowInsets.systemBars.only(WindowInsetsSides.Bottom + WindowInsetsSides.End)
                 )
