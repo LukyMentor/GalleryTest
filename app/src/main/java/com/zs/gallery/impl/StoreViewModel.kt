@@ -62,20 +62,14 @@ abstract class StoreViewModel(val provider: MediaProvider): KoinViewModel(){
                 if (res != SnackbarResult.ActionPerformed)
                     return@launch
             }
-            // Get a mutable list of favorite items.
-            val favourites = preferences[Settings.KEY_FAVOURITE_FILES].toMutableList()
-
-            // Determine the action and message based on whether all selected items are already favorites.
-            when {
-                // Remove all selected items from favorites.
-                favourites.containsAll(selected) -> favourites.removeAll(selected)
-                // Add the un-favorite selected items to favorites.
-                selected.any { it in favourites } -> {
-                    val filtered = selected.filterNot { it in favourites }
-                    favourites.addAll(filtered)
-                }
-                // Add the un-favorite selected items to favorites.
-                else -> favourites.addAll(selected)
+            // Set-based and off the main thread: with thousands of photos the old list scans
+            // (containsAll/removeAll on lists) froze the app.
+            val current = preferences[Settings.KEY_FAVOURITE_FILES]
+            val favourites = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                val set = LinkedHashSet(current)
+                // All already liked -> unlike them; otherwise like the rest.
+                if (set.containsAll(selected)) set.removeAll(selected.toHashSet()) else set.addAll(selected)
+                set.toList()
             }
 
             // Update the favorite items in preferences.

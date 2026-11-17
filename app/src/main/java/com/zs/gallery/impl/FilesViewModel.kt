@@ -127,10 +127,16 @@ class FilesViewModel(
             SOURCE_PICK -> Icons.Outlined.DriveFileMove to
                     "Add to ${arg.orEmpty().trimEnd('/').substringAfterLast('/')}"
             else -> Icons.TwoTone.FolderCopy to buildAnnotatedString {
-                append(PathUtils.name(arg!!).ellipsize(10))
-                withStyle(ParagraphStyle(lineHeight = 12.sp)) {
-                    withStyle(SpanStyle(fontSize = 11.sp, color = Color.DarkGray)) {
-                        appendLine(PathUtils.parent(arg))
+                // Folder name, with where it is underneath (readable in light and dark mode).
+                append(PathUtils.name(arg!!).ellipsize(40))
+                val parent = PathUtils.parent(arg)
+                val where = com.zs.gallery.common.FileOps.relativePathOf(parent)
+                    ?.trimEnd('/')?.let { if (it.isEmpty()) "Phone" else "Phone › ${it.replace("/", " › ")}" }
+                    ?: parent
+                val dim = if (com.zs.gallery.common.FileOps.darkTheme) Color(0xFFB9B9C6) else Color(0xFF5E5E6A)
+                withStyle(ParagraphStyle(lineHeight = 14.sp)) {
+                    withStyle(SpanStyle(fontSize = 12.sp, color = dim)) {
+                        append(where)
                     }
                 }
             }
@@ -291,6 +297,11 @@ class FilesViewModel(
             // Handle actions for Favorites when not in selection mode
             else if (source == SOURCE_FAV && !isInSelectionMode) {
                 this += UN_STAR
+            }
+            // A folder with nothing selected: just "select all" in the header. (Like / delete /
+            // share used to act on the *whole folder* from a single tap - and froze big folders.)
+            else if (!isInSelectionMode) {
+                return@buildList
             }
             // Default actions for other cases (e.g., albums, selection mode)
             // These actions are typically available when items are selected or in a general context.

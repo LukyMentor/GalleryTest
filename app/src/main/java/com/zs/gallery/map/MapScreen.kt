@@ -174,6 +174,17 @@ fun MapScreen() {
         var expanded by rememberSaveable { mutableStateOf(false) }
         val cluster = selected
         androidx.activity.compose.BackHandler(enabled = expanded && cluster != null) { expanded = false }
+        // Full-screen grid: hide the Photos / Map / Folders bar; bring it back when it closes.
+        val facade = com.zs.gallery.common.compose.LocalSystemFacade.current
+        val gridShown = expanded && cluster != null
+        androidx.compose.runtime.DisposableEffect(gridShown) {
+            if (gridShown)
+                facade.style += com.zs.gallery.common.WindowStyle.FLAG_APP_NAV_BAR_HIDDEN
+            onDispose {
+                if (gridShown)
+                    facade.style += com.zs.gallery.common.WindowStyle.FLAG_APP_NAV_BAR_VISIBILITY_AUTO
+            }
+        }
         if (cluster != null)
             PlaceStrip(
                 cluster = cluster,
