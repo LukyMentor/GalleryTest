@@ -18,6 +18,12 @@
 
 package com.zs.gallery.settings
 
+import com.zs.gallery.common.CrashLog
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.shape.RoundedCornerShape
+
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
@@ -603,6 +609,10 @@ fun Settings(viewState: SettingsViewState) {
                     item(CONTENT_TYPE_HEADER) { GroupHeader(text = stringResource(id = R.string.appearance)) }
                     Appearence(viewState = viewState)
 
+                    // Crash log (kept on the device; copy it to report a problem)
+                    item(contentType = CONTENT_TYPE_HEADER) { GroupHeader(text = "Crash log") }
+                    item(contentType = "crash_log") { CrashLogCard() }
+
                     // AboutUs
                     // Load AboutUs here if this is mobile port
                     if (strategy !is SinglePaneStrategy)
@@ -628,4 +638,43 @@ fun Settings(viewState: SettingsViewState) {
             )
         }
     )
+}
+
+/** Shows the last crash (if any) with buttons to copy or clear it. */
+@Composable
+private fun CrashLogCard() {
+    val context = LocalContext.current
+    var report by remember { mutableStateOf(CrashLog.read(context)) }
+    val colors = AppTheme.colors
+    androidx.compose.foundation.layout.Column(
+        modifier = Modifier
+            .padding(horizontal = CP.normal, vertical = CP.small)
+            .fillMaxWidth()
+            .background(colors.background(2.dp), RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        val text = report
+        if (text == null) {
+            Label("No crashes recorded.", style = AppTheme.typography.body2)
+            return@Column
+        }
+        // First lines: time, version, device and the error itself.
+        Label(
+            text.lineSequence().filter { it.isNotBlank() }.take(6).joinToString("\n"),
+            style = AppTheme.typography.label3,
+            maxLines = 6
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            com.zs.gallery.files.FilterChip("Copy", true) {
+                val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("M Gallery crash", text))
+                android.widget.Toast.makeText(context, "Crash log copied", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            com.zs.gallery.files.FilterChip("Clear", false) {
+                CrashLog.clear(context)
+                report = null
+            }
+        }
+    }
 }

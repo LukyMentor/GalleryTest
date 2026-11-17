@@ -66,7 +66,12 @@ internal class WorldData(
     /** One country in three levels of detail: coarse (world view), mid, fine (zoomed in). */
     class Country(val lods: Array<Shape>)
 
-    class City(val x: Float, val y: Float, val minZoom: Int, val name: String)
+    class City(val x: Float, val y: Float, val minZoom: Int, val name: String, val country: String) {
+        /** Geographic position (from the mercator coordinates). */
+        val longitude: Double get() = x * 360.0 - 180.0
+        val latitude: Double
+            get() = Math.toDegrees(kotlin.math.atan(kotlin.math.sinh(Math.PI * (1.0 - 2.0 * y))))
+    }
 
     /** A country name, shown between [minZoom] and [maxZoom]. */
     class CountryLabel(val x: Float, val y: Float, val minZoom: Int, val maxZoom: Int, val name: String)
@@ -86,7 +91,7 @@ internal class WorldData(
         private fun parse(bytes: ByteArray): WorldData {
             val b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
             val magic = ByteArray(4).also { b.get(it) }
-            check(String(magic) == "MGW3") { "Unknown world map format" }
+            check(String(magic) == "MGW4") { "Unknown world map format" }
 
             fun rings(): List<Ring> {
                 val count = b.int
@@ -113,7 +118,9 @@ internal class WorldData(
                 val minZoom = b.get().toInt() and 0xFF
                 val len = b.short.toInt() and 0xFFFF
                 val name = ByteArray(len).also { b.get(it) }
-                City(x, y, minZoom, String(name, Charsets.UTF_8))
+                val countryLen = b.short.toInt() and 0xFFFF
+                val country = ByteArray(countryLen).also { b.get(it) }
+                City(x, y, minZoom, String(name, Charsets.UTF_8), String(country, Charsets.UTF_8))
             }
             val labels = List(b.int) {
                 val x = b.float

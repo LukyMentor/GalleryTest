@@ -45,6 +45,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -207,8 +208,15 @@ private fun PlaceStrip(
             modifier = Modifier.padding(start = 16.dp, end = 4.dp)
         ) {
             val count = cluster.photos.size
+            // Where this is (offline: nearest bundled city to the photos' average position).
+            val place by produceState<String?>(null, cluster.photos.first().id, count) {
+                val lat = cluster.photos.map { it.latitude }.average()
+                val lon = cluster.photos.map { it.longitude }.average()
+                value = Places.describe(context, lat, lon)
+            }
+            val photosLabel = if (count == 1) "1 photo" else "$count photos"
             Label(
-                text = if (count == 1) "1 photo" else "$count photos",
+                text = place?.let { "$it · $photosLabel" } ?: photosLabel,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
             )

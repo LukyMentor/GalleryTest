@@ -550,6 +550,13 @@ class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
                 window.setFlags(LayoutParams.FLAG_SECURE, LayoutParams.FLAG_SECURE)
 
             // Personal build: no "what's new", Play Store or promotional popups on launch.
+            // But do mention a crash from last time, so it can be reported.
+            if (com.zs.gallery.common.CrashLog.consumeUnseen(this))
+                android.widget.Toast.makeText(
+                    this,
+                    "M Gallery crashed last time. Details: Settings → Crash log",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
         }
         // Set up the window to fit the system windows
         // This setting is usually configured in the app theme, but is ensured here

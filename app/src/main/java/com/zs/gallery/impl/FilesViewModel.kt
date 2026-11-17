@@ -53,6 +53,10 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.zs.core.common.PathUtils
 import com.zs.core.store.MediaFile
+import com.zs.gallery.common.FileOps
+import androidx.compose.material.icons.outlined.DriveFileMove
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import com.zs.core.store.sortedForTimeline
 import com.zs.gallery.files.MediaFilter
 import com.zs.gallery.files.MediaOrder
@@ -81,6 +85,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -97,6 +102,9 @@ private val RESTORE = Action(R.string.restore, Icons.Outlined.Restore)
 private val EMPTY_BIN = Action(R.string.empty_bin, Icons.Outlined.PlaylistRemove)
 private val QUICK_SHARE = Action(R.string.beam, Icons.Filled.NearbyShare)
 private val SETTINGS = Action.SETTINGS
+private val MOVE = Action(R.string.move_to, Icons.Outlined.DriveFileMove)
+private val COPY = Action(R.string.copy_to, Icons.Outlined.ContentCopy)
+private val RENAME = Action(R.string.rename, Icons.Outlined.DriveFileRenameOutline)
 
 @SuppressLint("NewApi")
 class FilesViewModel(
@@ -148,6 +156,12 @@ class FilesViewModel(
             MediaOrder.OLDEST -> filtered.sortedBy { it.timelineDate }
             MediaOrder.LARGEST -> filtered.sortedByDescending { it.size }
         }
+    }
+
+    /** Folder a file belongs to, same rule as the Folders tab ("img*" subfolders merge up). */
+    private fun folderOf(path: String): String {
+        val parent = PathUtils.parent(path)
+        return if (PathUtils.name(parent).startsWith("img", true)) PathUtils.parent(parent) else parent
     }
 
     /** Size groups used when ordering by size (largest first). */
@@ -273,6 +287,11 @@ class FilesViewModel(
             // - SHARE: For standard sharing options.
             else {
                 this += QUICK_SHARE; this += STAR; this += DELETE; this += SHARE
+                // Organising (only for selections, not the "unlike" action on favourites).
+                if (isInSelectionMode) {
+                    this += MOVE; this += COPY
+                    if (selection.size == 1) this += RENAME
+                }
             }
         }
     }
@@ -327,6 +346,21 @@ class FilesViewModel(
                         error(getText(R.string.msg_files_quick_share_error))
                 }
 
+                MOVE, COPY, RENAME -> {
+                    val wanted = focused.toHashSet()
+                    val files = data?.values?.flatten()?.filter { it.id in wanted }.orEmpty()
+                    if (files.isEmpty()) return@launch
+                    when (value) {
+                        RENAME -> FileOps.rename(resolver, files.first())
+                        else -> {
+                            val folders = provider.fetchFolders().map { it.path }
+                            val title = if (value == MOVE) "Move to" else "Copy to"
+                            val target = FileOps.pickFolder(resolver, title, folders) ?: return@launch
+                            if (value == MOVE) FileOps.move(resolver, files, target)
+                            else FileOps.copy(resolver, files, target)
+                        }
+                    }
+                }
                 else -> error("${getText(value.label)} is not supported.")
             }
         }
@@ -419,8 +453,18 @@ class FilesViewModel(
             }
             // Query + sorting + grouping happen on a background thread; only the result touches
             // the UI. The sorted list is also shared with the viewer so it opens instantly.
-            .combine(snapshotFlow { filter to order }) { values, (filter, order) ->
-                val arranged = arrange(values, filter, order)
+            .combine(
+                combine(
+                    snapshotFlow { filter to order },
+                    // Folders hidden from the Photos tab (only applies there).
+                    if (source == SOURCE_TIMELINE) preferences.observe(Settings.KEY_HIDDEN_FOLDERS)
+                    else flowOf(emptySet<String>())
+                ) { options, hidden -> options to hidden }
+            ) { values, (options, hidden) ->
+                val (filter, order) = options
+                val visible = if (hidden.isEmpty()) values
+                else values.filter { folderOf(it.path) !in hidden }
+                val arranged = arrange(visible, filter, order)
                 // Same list (and order) the viewer swipes through.
                 MediaListCache.put(source, arg, arranged)
                 group(arranged, order) to (source != SOURCE_BIN && order == MediaOrder.LARGEST)

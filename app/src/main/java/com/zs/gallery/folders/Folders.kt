@@ -30,6 +30,16 @@ import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.ArrowDownward
 import com.zs.compose.theme.IconButton
 import com.zs.gallery.files.FilterChip
+import com.zs.compose.theme.menu.DropDownMenuItem
+import com.zs.compose.theme.menu.DropDownMenu
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -137,6 +147,7 @@ fun Folders(viewState: FoldersViewState) {
         //
         content = {
             val data by viewState.data.collectAsState()
+            val hiddenFolders by viewState.hidden.collectAsState()
             val multiplier by preference(key = Settings.KEY_GRID_ITEM_SIZE_MULTIPLIER)
             val state = rememberLazyGridState()
             //
@@ -222,13 +233,41 @@ fun Folders(viewState: FoldersViewState) {
                         items,
                         key = Folder::path,
                         contentType = { "folder" },
-                        itemContent = {
-                            Folder(
-                                value = it,
-                                modifier = Modifier
-                                    .animateItem()
-                                    .clickable() { navController.navigate(RouteFolder(it.path)) }
-                            )
+                        itemContent = { folder ->
+                            // Long-press: hide from / show in the Photos tab.
+                            var menu by remember { mutableStateOf(false) }
+                            val isHidden = folder.path in hiddenFolders
+                            Box(Modifier.animateItem()) {
+                                Folder(
+                                    value = folder,
+                                    modifier = Modifier
+                                        .graphicsLayer { alpha = if (isHidden) 0.55f else 1f }
+                                        .combinedClickable(
+                                            onClick = { navController.navigate(RouteFolder(folder.path)) },
+                                            onLongClick = { menu = true }
+                                        )
+                                )
+                                if (isHidden)
+                                    Icon(
+                                        Icons.Outlined.VisibilityOff,
+                                        contentDescription = "Hidden from Photos",
+                                        tint = AppTheme.colors.onBackground,
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(8.dp)
+                                            .size(20.dp)
+                                    )
+                                DropDownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                    DropDownMenuItem(
+                                        title = if (isHidden) "Show in Photos" else "Hide from Photos",
+                                        icon = if (isHidden) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
+                                        onClick = {
+                                            menu = false
+                                            viewState.toggleHidden(folder.path)
+                                        }
+                                    )
+                                }
+                            }
                         }
                     )
 

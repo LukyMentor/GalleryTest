@@ -18,6 +18,10 @@
 
 package com.zs.gallery.impl
 
+import com.zs.gallery.settings.Settings
+
+import kotlinx.coroutines.flow.StateFlow
+
 import android.text.format.DateUtils
 import android.util.Log
 import androidx.compose.material.icons.Icons
@@ -56,6 +60,19 @@ private val ORDER_BY_NAME = Action(R.string.name, Icons.Outlined.TextFields, id 
 private val ORDER_BY_NONE = FilterDefaults.ORDER_NONE
 
 class FoldersViewModel(provider: MediaProvider) : KoinViewModel(), FoldersViewState {
+
+    override val hidden: StateFlow<Set<String>> =
+        preferences.observe(Settings.KEY_HIDDEN_FOLDERS)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, preferences[Settings.KEY_HIDDEN_FOLDERS])
+
+    override fun toggleHidden(path: String) {
+        val current = preferences[Settings.KEY_HIDDEN_FOLDERS]
+        val hiding = path !in current
+        preferences[Settings.KEY_HIDDEN_FOLDERS] = if (hiding) current + path else current - path
+        showPlatformToast(
+            if (hiding) "Hidden from Photos (still here in Folders)" else "Shown in Photos again"
+        )
+    }
 
 
     val filterKey = stringPreferenceKey(

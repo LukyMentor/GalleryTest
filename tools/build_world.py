@@ -84,7 +84,7 @@ places = json.load(open(f'{SRC}/ne_10m_populated_places_simple.geojson'))['featu
 
 stats = [0, 0, 0]
 with open(OUT, 'wb') as f:
-    f.write(b'MGW3')
+    f.write(b'MGW4')
     f.write(struct.pack('<I', len(countries)))
     for c in countries:
         rings = list(rings_of(c['geometry']))
@@ -107,12 +107,15 @@ with open(OUT, 'wb') as f:
             continue
         x, y = merc(pr['longitude'], pr['latitude'])
         name = (pr.get('name') or '').encode('utf-8')
-        cities.append((mz, -(pr.get('pop_max') or 0), x, y, name))
+        country = (pr.get('adm0name') or '').encode('utf-8')
+        cities.append((mz, -(pr.get('pop_max') or 0), x, y, name, country))
     cities.sort()  # most important first
     f.write(struct.pack('<I', len(cities)))
-    for mz, _, x, y, name in cities:
+    for mz, _, x, y, name, country in cities:
         f.write(struct.pack('<2fBH', x, y, int(math.floor(mz)), len(name)))
         f.write(name)
+        f.write(struct.pack('<H', len(country)))
+        f.write(country)
     # Country name labels (Natural Earth label points and zoom range), most important first.
     labels = []
     for c in countries:

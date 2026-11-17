@@ -50,6 +50,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material.icons.outlined.Place
+import androidx.compose.runtime.produceState
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -180,6 +182,21 @@ private fun DetailsBody(value: MediaFile) = Column {
             title = stringResource(R.string.title),
             value = value.name
         )
+
+        // Place (offline: nearest bundled city), when the photo has a location.
+        if (value.isImage) {
+            val context = LocalContext.current
+            val place by produceState<String?>(null, value.id) {
+                this.value = com.zs.gallery.map.Places.describePhoto(context, value.id)
+            }
+            place?.let {
+                Info(
+                    icon = Icons.Outlined.Place,
+                    title = "Place",
+                    value = it
+                )
+            }
+        }
 
         // Path
         Info(

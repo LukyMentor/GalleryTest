@@ -39,6 +39,10 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.zs.core.BuildConfig
 import com.zs.core.store.MediaFile
+import com.zs.gallery.common.FileOps
+import androidx.compose.material.icons.outlined.DriveFileMove
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import com.zs.core.store.sortedForTimeline
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -84,6 +88,9 @@ private val QUICK_SHARE = Action(R.string.beam, Icons.Filled.NearbyShare)
 private val EDIT_IN = Action(R.string.edit_in, Icons.Outlined.Edit)
 private val USE_AS = Action(R.string.wallpaper, Icons.Outlined.Wallpaper)
 private val GOOGLE_LENS = Action(R.string.lens, Icons.Outlined.DocumentScanner)
+private val MOVE = Action(R.string.move_to, Icons.Outlined.DriveFileMove)
+private val COPY = Action(R.string.copy_to, Icons.Outlined.ContentCopy)
+private val RENAME = Action(R.string.rename, Icons.Outlined.DriveFileRenameOutline)
 
 class MediaViewerViewModel(
     handle: SavedStateHandle,
@@ -167,6 +174,16 @@ class MediaViewerViewModel(
                     if (res.isFailure) resolver.startActivity(FallbackWallpaperIntent(current!!.mediaUri))
                 }
                 EDIT_IN -> resolver.startActivity(EditInIntent(current!!.mediaUri))
+                RENAME -> FileOps.rename(resolver, current ?: return@launch)
+                MOVE, COPY -> {
+                    val file = current ?: return@launch
+                    val folders = provider.fetchFolders().map { it.path }
+                    val target = FileOps.pickFolder(
+                        resolver, if (value == MOVE) "Move to" else "Copy to", folders
+                    ) ?: return@launch
+                    if (value == MOVE) FileOps.move(resolver, listOf(file), target)
+                    else FileOps.copy(resolver, listOf(file), target)
+                }
                 else -> error("Action not supported")
             }
         }
@@ -189,6 +206,9 @@ class MediaViewerViewModel(
             // Wallpaper only makes sense for images.
             if (current?.isImage == true)
                 this += USE_AS
+            this += MOVE
+            this += COPY
+            this += RENAME
         }
     }
 

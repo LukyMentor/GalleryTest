@@ -50,6 +50,10 @@
             <meta-data
                 android:name="com.zs.gallery.impl.AnalyticsInitializer"
                 android:value="androidx.startup" />
+            <!-- Crash log (kept on the device, shown in Settings) -->
+            <meta-data
+                android:name="com.zs.gallery.common.CrashLogInitializer"
+                android:value="androidx.startup" />
             <!-- Koin-->
             <meta-data
                 android:name="com.zs.gallery.impl.KoinInitializer"

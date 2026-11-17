@@ -52,4 +52,10 @@ interface FoldersViewState {
      * Updates the [filter] and triggers the update.
      */
     fun filter(ascending: Boolean = this.filter.first, order: Action = this.filter.second)
+
+    /** Folders (paths) hidden from the Photos tab. */
+    val hidden: StateFlow<Set<String>>
+
+    /** Hides the folder from the Photos tab, or shows it again. */
+    fun toggleHidden(path: String)
 }

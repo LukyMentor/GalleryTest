@@ -47,6 +47,7 @@ import com.zs.gallery.settings.Settings.STANDARD_TILE_SIZE
 import com.zs.preferences.Key
 import com.zs.preferences.StringSaver
 import com.zs.preferences.booleanPreferenceKey
+import com.zs.preferences.stringSetPreferenceKey
 import com.zs.preferences.floatPreferenceKey
 import com.zs.preferences.intPreferenceKey
 import com.zs.preferences.stringPreferenceKey
@@ -211,6 +212,9 @@ object Settings {
                 }
             }
         )
+    /** Folders (absolute paths) whose photos are not shown in the Photos tab. */
+    val KEY_HIDDEN_FOLDERS =
+        stringSetPreferenceKey("${PREFIX}_hidden_folders", emptySet())
     val KEY_SECURE_MODE =
         booleanPreferenceKey(PREFIX + "_secure_gallery", defaultValue = false)
     val KEY_LAUNCH_COUNTER =

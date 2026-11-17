@@ -90,6 +90,19 @@ object PhotoLocations {
         }
     }
 
+    /**
+     * GPS position (latitude, longitude) of one photo: from the scan cache when known, otherwise
+     * read from the file right now. Null if the photo has no location (or no permission).
+     */
+    suspend fun locationOf(context: Context, id: Long): DoubleArray? = withContext(Dispatchers.IO) {
+        val app = context.applicationContext
+        val known = (cache ?: load(app).also { cache = it })[id]
+        if (known != null)
+            return@withContext if (known.lat.isNaN()) null else doubleArrayOf(known.lat, known.lon)
+        if (!hasPermission(app)) return@withContext null
+        readLocation(app, id)
+    }
+
     /** Whether Android will let us see GPS data in photos. */
     fun hasPermission(context: Context): Boolean =
         context.checkSelfPermission(Manifest.permission.ACCESS_MEDIA_LOCATION) ==
