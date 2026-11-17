@@ -113,9 +113,11 @@ class MediaViewerViewModel(
     val current inline get() = data.find { it.id == focused }
 
     // Deleted from the viewer: drop it from the list at once (the next photo shows immediately).
+    // Also remembered, so a library refresh that still lists it can't bring it back for a moment.
+    private val removed = HashSet<Long>()
     override fun onRemoved(ids: LongArray) {
-        val gone = ids.toHashSet()
-        data = data.filterNot { it.id in gone }
+        removed.addAll(ids.toList())
+        data = data.filterNot { it.id in removed }
     }
     override val title: CharSequence by derivedStateOf {
         sdf.format(Date(current?.timelineDate ?: return@derivedStateOf ""))
@@ -239,7 +241,7 @@ class MediaViewerViewModel(
             firstUpdate = false
             delay(350)
         }
-        data = values
+        data = if (removed.isEmpty()) values else values.filterNot { it.id in removed }
     }
 
     init {

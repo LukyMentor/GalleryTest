@@ -371,12 +371,19 @@ private fun Carousel(
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer {
+                        // Fade by modulating each draw instead of an offscreen buffer: the
+                        // buffer briefly showed black / the old frame when the fade started.
+                        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
                         val fade = deleter.fading
                         if (fade != null && fade.id == item.id) {
                             alpha = fade.alpha.value
                             scaleX = fade.scale.value
                             scaleY = fade.scale.value
-                        } else if (deleter.appearing != null && state.currentPage == index)
+                        }
+                        // Faded out and being deleted: stays invisible until it leaves the list
+                        // (no flash of it coming back for a frame).
+                        else if (item.id in deleter.hidden) alpha = 0f
+                        else if (deleter.appearing != null && state.currentPage == index)
                             alpha = deleter.appearing!!.value
                     }
             ) {
@@ -832,6 +839,8 @@ internal class Deleter(private val scope: CoroutineScope) {
 
     var fading by mutableStateOf<Fade?>(null)
         private set
+    /** Photos that finished fading out: drawn invisible until they're gone from the list. */
+    val hidden = androidx.compose.runtime.mutableStateListOf<Long>()
     var appearing by mutableStateOf<Animatable<Float, androidx.compose.animation.core.AnimationVector1D>?>(null)
         private set
 
@@ -843,6 +852,7 @@ internal class Deleter(private val scope: CoroutineScope) {
             val spec = tween<Float>(durationMillis = 180, easing = FastOutSlowInEasing)
             launch { f.scale.animateTo(0.88f, spec) }
             f.alpha.animateTo(0f, spec)
+            hidden += id
             // Was a system "move to trash?" dialog shown (the app gets paused)?
             var paused = false
             val owner = activity as? androidx.lifecycle.LifecycleOwner
@@ -867,6 +877,7 @@ internal class Deleter(private val scope: CoroutineScope) {
             owner?.lifecycle?.removeObserver(observer)
             if (!gone) {
                 // Declined: bring it back.
+                hidden -= id
                 launch { f.scale.animateTo(1f, spec) }
                 f.alpha.animateTo(1f, spec)
                 fading = null

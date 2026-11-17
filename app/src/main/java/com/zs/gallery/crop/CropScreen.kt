@@ -500,13 +500,15 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            if (source?.canReplace != false)
-                Pill("Replace original", selected = false, big = true, modifier = Modifier.weight(1f)) {
-                    save(replace = true)
-                }
-            Pill(if (saving) "Saving…" else "Save copy", selected = true, big = true, modifier = Modifier.weight(1f)) {
+            // Copy on the left (secondary); replacing the original is the main action on the right.
+            val canReplace = source?.canReplace != false
+            Pill(if (saving && !canReplace) "Saving…" else "Save copy", selected = !canReplace, big = true, modifier = Modifier.weight(1f)) {
                 save(replace = false)
             }
+            if (canReplace)
+                Pill(if (saving) "Saving…" else "Replace original", selected = true, big = true, modifier = Modifier.weight(1f)) {
+                    save(replace = true)
+                }
         }
     }
 }
