@@ -571,7 +571,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                 onAction = {
                     val file = currentFile
                     if (it == com.zs.gallery.crop.CROP && file != null)
-                        navController.navigate(com.zs.gallery.crop.RouteCrop(file.id))
+                        navController.navigate(com.zs.gallery.crop.RouteCrop(file.mediaUri))
                     else viewState.onPerformAction(it, ctx.findActivity())
                 },
                 // Images get a fourth button: crop.

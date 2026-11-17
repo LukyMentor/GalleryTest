@@ -41,6 +41,7 @@ import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.Store
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
@@ -520,8 +521,24 @@ class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
         }
     }
 
+    /** "Edit with M Gallery" (e.g. from the screenshot pop-up): straight into the crop screen. */
+    private fun openCrop(intent: Intent) {
+        val uri = intent.data ?: return
+        lifecycleScope.launch {
+            delay(200)
+            navController?.navigate(com.zs.gallery.crop.RouteCrop(uri, external = true)) {
+                launchSingleTop = true
+            }
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (intent.action == Intent.ACTION_EDIT) {
+            setIntent(intent)
+            if (!isAuthenticationRequired) openCrop(intent)
+            return
+        }
         if (intent.action != Intent.ACTION_VIEW)
             return
         lifecycleScope.launch {
@@ -577,6 +594,11 @@ class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
                 snackbarHostState,
                 navController
             )
+            // Opened via "Edit with M Gallery": crop it (not when the app lock is on).
+            LaunchedEffect(Unit) {
+                if (isColdStart && intent.action == Intent.ACTION_EDIT && !isAuthenticationRequired)
+                    openCrop(intent)
+            }
             // Manage lifecycle-related events and listeners
             DisposableEffect(Unit) {
                 Log.d(TAG, "onCreate - DisposableEffect: $timeAppWentToBackground")

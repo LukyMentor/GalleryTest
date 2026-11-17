@@ -103,7 +103,7 @@ class MediaViewerViewModel(
     override var focused: Long by mutableLongStateOf(_args.second)
     private val source = _args.first
 
-    private val sdf = SimpleDateFormat("MMMM d, yyyy\nh:mm a", Locale.getDefault())
+    private val sdf = SimpleDateFormat("d MMMM yyyy\nHH:mm", Locale.getDefault())
     override var data: List<MediaFile> by mutableStateOf(emptyList())
     override var details: MediaFile? by mutableStateOf(null)
     val current inline get() = data.find { it.id == focused }

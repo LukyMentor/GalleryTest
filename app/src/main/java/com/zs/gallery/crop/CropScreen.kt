@@ -91,10 +91,14 @@ import kotlin.math.min
 val CROP = Action(R.string.crop, Icons.Outlined.Crop)
 
 object RouteCrop : Route {
-    const val PARAM_ID = "param_id"
-    override val route: String = "$domain/{$PARAM_ID}"
-    override fun invoke(): String = error("RouteCrop needs a photo id")
-    operator fun invoke(id: Long): String = "$domain/$id"
+    const val PARAM_URI = "param_uri"
+    const val PARAM_EXTERNAL = "param_external"
+    override val route: String = "$domain/{$PARAM_URI}/{$PARAM_EXTERNAL}"
+    override fun invoke(): String = error("RouteCrop needs a photo")
+
+    /** [external]: opened by another app ("Edit with"), so finishing returns to that app. */
+    operator fun invoke(uri: Uri, external: Boolean = false): String =
+        "$domain/${Uri.encode(uri.toString())}/$external"
 }
 
 // Which parts of the frame a drag moves.
@@ -120,19 +124,34 @@ private class CropSource(
     val name: String,
     val mimeType: String,
     val relativePath: String?,
-)
+) {
+    /** Only photos in the system media library can be overwritten in place. */
+    val canReplace: Boolean get() = uri.authority == MediaStore.AUTHORITY
+}
 
-private fun loadSource(context: Context, id: Long): CropSource? {
-    val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-    val projection = arrayOf(
-        MediaStore.MediaColumns.DISPLAY_NAME,
-        MediaStore.MediaColumns.MIME_TYPE,
-        MediaStore.MediaColumns.RELATIVE_PATH,
-    )
-    return context.contentResolver.query(uri, projection, null, null, null)?.use { c ->
-        if (!c.moveToFirst()) null
-        else CropSource(uri, c.getString(0) ?: "image", c.getString(1) ?: "image/jpeg", c.getString(2))
+private fun loadSource(context: Context, uri: Uri): CropSource? {
+    val resolver = context.contentResolver
+    val type = resolver.getType(uri) ?: "image/jpeg"
+    // Media library photos: name, type and folder.
+    if (uri.authority == MediaStore.AUTHORITY) {
+        val projection = arrayOf(
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.MIME_TYPE,
+            MediaStore.MediaColumns.RELATIVE_PATH,
+        )
+        runCatching {
+            resolver.query(uri, projection, null, null, null)?.use { c ->
+                if (c.moveToFirst())
+                    return CropSource(uri, c.getString(0) ?: "image", c.getString(1) ?: type, c.getString(2))
+            }
+        }
     }
+    // Anything else another app hands us: just a name; copies go to Pictures.
+    val name = runCatching {
+        resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+    }.getOrNull() ?: uri.lastPathSegment ?: "image"
+    return CropSource(uri, name, type, null)
 }
 
 /** Decodes [uri] (rotated upright) so its longer side is at most [maxSide] px. */
@@ -152,14 +171,18 @@ private fun decode(context: Context, uri: Uri, maxSide: Int, software: Boolean):
  * resize it, drag inside it to move it.
  */
 @Composable
-fun CropScreen(id: Long) {
+fun CropScreen(uri: Uri, external: Boolean = false) {
     val context = LocalContext.current
     val navController = LocalNavController.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
-    val source by produceState<CropSource?>(null, id) {
-        value = withContext(Dispatchers.IO) { runCatching { loadSource(context, id) }.getOrNull() }
+    val source by produceState<CropSource?>(null, uri) {
+        value = withContext(Dispatchers.IO) { runCatching { loadSource(context, uri) }.getOrNull() }
+    }
+    // Leaving: back into M Gallery, or - when another app asked for the edit - back to that app.
+    val leave = {
+        if (external) context.findActivity().finish() else navController.navigateUp()
     }
     val preview by produceState<ImageBitmap?>(null, source) {
         val src = source ?: return@produceState
@@ -221,10 +244,11 @@ fun CropScreen(id: Long) {
                 },
                 Toast.LENGTH_SHORT
             ).show()
-            if (ok) navController.navigateUp()
+            if (ok) leave()
         }
     }
 
+    androidx.activity.compose.BackHandler(enabled = external) { leave() }
     Column(
         Modifier
             .fillMaxSize()
@@ -236,7 +260,7 @@ fun CropScreen(id: Long) {
             IconButton(
                 icon = Icons.Outlined.Close,
                 contentDescription = "Cancel",
-                onClick = { navController.navigateUp() },
+                onClick = { leave() },
                 tint = Color.White
             )
             Label("Crop", color = Color.White, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
@@ -351,9 +375,10 @@ fun CropScreen(id: Long) {
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            Pill("Replace original", selected = false, big = true, modifier = Modifier.weight(1f)) {
-                save(replace = true)
-            }
+            if (source?.canReplace != false)
+                Pill("Replace original", selected = false, big = true, modifier = Modifier.weight(1f)) {
+                    save(replace = true)
+                }
             Pill(if (saving) "Saving…" else "Save copy", selected = true, big = true, modifier = Modifier.weight(1f)) {
                 save(replace = false)
             }

@@ -80,12 +80,23 @@ fun MediaViewerTopAppBar(
         TopAppBar(
             navigationIcon = navigationIcon,
             title = {
-                Text(
-                    title,
-                    maxLines = 2,
-                    fontFamily = FontFamily.Monospace,
-                    style = AppTheme.typography.title3
-                )
+                // Date (app font, semibold) with the 24-hour time underneath.
+                val text = title.toString()
+                androidx.compose.foundation.layout.Column {
+                    Text(
+                        text.substringBefore('\n'),
+                        maxLines = 1,
+                        style = AppTheme.typography.title3,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                    )
+                    if ('\n' in text)
+                        Text(
+                            text.substringAfter('\n'),
+                            maxLines = 1,
+                            style = AppTheme.typography.body2,
+                            color = Color.SignalWhite.copy(alpha = 0.75f)
+                        )
+                }
             },
             actions = actions,
             background = Veil,

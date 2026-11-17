@@ -83,6 +83,13 @@ import com.zs.compose.theme.text.Header
 import com.zs.compose.theme.text.Label
 import com.zs.core.store.MediaFile
 import com.zs.gallery.R
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material.icons.outlined.PhotoSizeSelectActual
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Arrangement
 import com.zs.gallery.common.compose.ContentPadding
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -155,71 +162,75 @@ fun DetailsViewDialog(
 
 /** The properties shown in the dialog and in the swipe-up sheet. */
 @Composable
-private fun DetailsBody(value: MediaFile) = Column {
-        // Date Modified
-        Header(
-            remember(value.id) { formatter.format(Date(value.timelineDate)) },
+private fun DetailsBody(value: MediaFile) = Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    val context = LocalContext.current
+    // When: "Tuesday, 17 November 2026" with the 24-hour time.
+    val date = remember(value.id) { Date(value.timelineDate) }
+    Column(Modifier.padding(bottom = 4.dp)) {
+        Label(
+            remember(value.id) { SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault()).format(date) },
             style = AppTheme.typography.title2,
-            contentPadding = PaddingValues(
-                horizontal = ContentPadding.medium,
-                vertical = ContentPadding.medium
-            )
+            fontWeight = FontWeight.SemiBold
         )
-
-        // Section header
-        Header(
-            stringResource(R.string.details),
-            style = AppTheme.typography.label3,
-//                contentPadding = PaddingValues(
-//                    horizontal = ContentPadding.medium,
-//                    vertical = ContentPadding.small
-//                ),
+        Label(
+            remember(value.id) { SimpleDateFormat("HH:mm", Locale.getDefault()).format(date) },
+            style = AppTheme.typography.body1,
+            color = AppTheme.colors.onBackground.copy(alpha = 0.7f)
         )
-
-        // Title
-        Info(
-            icon = Icons.Outlined.Image,
-            title = stringResource(R.string.title),
-            value = value.name
-        )
-
-        // Place (offline: nearest bundled city), when the photo has a location.
-        if (value.isImage) {
-            val context = LocalContext.current
-            val place by produceState<String?>(null, value.id) {
-                this.value = com.zs.gallery.map.Places.describePhoto(context, value.id)
-            }
-            place?.let {
-                Info(
-                    icon = Icons.Outlined.Place,
-                    title = "Place",
-                    value = it
-                )
-            }
+    }
+    DetailRow(
+        icon = if (value.isImage) Icons.Outlined.Image else Icons.Outlined.Videocam,
+        label = "File name",
+        value = value.name
+    )
+    // Place (offline: nearest bundled city), when the photo has a location.
+    if (value.isImage) {
+        val place by produceState<String?>(null, value.id) {
+            this.value = com.zs.gallery.map.Places.describePhoto(context, value.id)
         }
+        place?.let { DetailRow(Icons.Outlined.Place, "Location", it) }
+    }
+    // Folder: "Phone › DCIM › Camera" instead of /storage/emulated/0/...
+    val folder = value.path.substringBeforeLast("/")
+    DetailRow(
+        icon = Icons.Outlined.Folder,
+        label = "Folder",
+        value = com.zs.gallery.common.FileOps.relativePathOf(folder)?.trimEnd('/')
+            ?.let { if (it.isEmpty()) "Phone" else "Phone › " + it.replace("/", " › ") } ?: folder
+    )
+    DetailRow(
+        icon = Icons.Outlined.PhotoSizeSelectActual,
+        label = "Size",
+        value = buildString {
+            append(Formatter.formatFileSize(context, value.size))
+            if (value.isImage && value.megapixels > 0)
+                append(String.format(Locale.getDefault(), " · %.1f MP", value.megapixels))
+            if (value.width > 0 && value.height > 0)
+                append(" · ${value.width} × ${value.height}")
+            if (value.duration > 0)
+                append(" · " + DateUtils.formatElapsedTime(value.duration / 1000L))
+        }
+    )
+}
 
-        // Path
-        Info(
-            icon = Icons.Outlined.Memory,
-            title = stringResource(R.string.path),
-            value = value.path.substringBeforeLast("/"),
-        )
-
-        // Metadata
-        val context = LocalContext.current
-        Info(
-            icon = Icons.Outlined.ImageSearch,
-            title = stringResource(R.string.metadata),
-            value = buildString {
-                append(Formatter.formatFileSize(context, value.size))
-                if (value.isImage && value.megapixels > 0)
-                    append(String.format(" • %.1f MP", value.megapixels))
-                if (value.width > 0 && value.height > 0)
-                    append(" • ${value.width} x ${value.height}")
-                if (value.duration > 0)
-                    append(" • " + DateUtils.formatElapsedTime(value.duration / 1000L))
-            }
-        )
+/** One property: icon in a soft accent circle, a small label and the value. */
+@Composable
+private fun DetailRow(icon: ImageVector, label: String, value: String) {
+    val colors = AppTheme.colors
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(40.dp)
+                .background(colors.accent.copy(alpha = 0.16f), CircleShape)
+        ) {
+            Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
+        }
+        Column(Modifier.padding(start = 14.dp)) {
+            Label(label, style = AppTheme.typography.label2, color = colors.onBackground.copy(alpha = 0.6f))
+            Label(value, style = AppTheme.typography.body1, maxLines = 2)
+        }
+    }
 }
 
 /**
@@ -311,11 +322,8 @@ fun DetailsSheet(
                 .size(width = 36.dp, height = 4.dp)
                 .background(colors.onBackground.copy(alpha = 0.3f), RoundedCornerShape(50))
         )
-        Header(
-            stringResource(R.string.properties),
-            style = AppTheme.typography.title3,
-            contentPadding = PaddingValues(vertical = ContentPadding.medium)
-        )
+        Spacer(Modifier.size(18.dp))
         DetailsBody(value)
+        Spacer(Modifier.size(8.dp))
     }
 }

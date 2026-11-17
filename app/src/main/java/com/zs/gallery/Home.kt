@@ -413,8 +413,10 @@ private val navGraphBuilder: NavGraphBuilder.() -> Unit = {
 
     // Crop
     composable(com.zs.gallery.crop.RouteCrop) {
+        val args = it.arguments
         com.zs.gallery.crop.CropScreen(
-            it.arguments?.getString(com.zs.gallery.crop.RouteCrop.PARAM_ID)?.toLongOrNull() ?: -1L
+            android.net.Uri.parse(args?.getString(com.zs.gallery.crop.RouteCrop.PARAM_URI).orEmpty()),
+            external = args?.getString(com.zs.gallery.crop.RouteCrop.PARAM_EXTERNAL) == "true"
         )
     }
 
