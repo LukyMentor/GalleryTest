@@ -30,6 +30,11 @@ import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.ArrowDownward
 import com.zs.compose.theme.IconButton
 import com.zs.gallery.files.FilterChip
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 
 import android.os.Build
 import androidx.compose.foundation.clickable
@@ -159,33 +164,37 @@ fun Folders(viewState: FoldersViewState) {
                             )
                     }
                 }
-                // "On this device" with the sort controls on the same line.
-                item(key = "device_header", contentType = "device_header", span = fullLineSpan) {
+                // Sort chips, same style as the Photos filter bar.
+                item(key = "folder_sort", contentType = "folder_sort", span = fullLineSpan) {
                     val (ascending, order) = viewState.filter
                     val byName = order.id == "name"
+                    val nameOrder = viewState.orders.first { it.id == "name" }
+                    val dateOrder = viewState.orders.first { it.id != "name" }
                     Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.padding(top = CP.large, bottom = CP.small)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(top = CP.normal, bottom = CP.small)
                     ) {
-                        Header(
-                            "On this device",
-                            Modifier
-                                .weight(1f)
-                                .padding(horizontal = 6.dp),
-                            color = AppTheme.colors.accent,
-                            style = AppTheme.typography.label2
-                        )
-                        val nameOrder = viewState.orders.first { it.id == "name" }
-                        val dateOrder = viewState.orders.first { it.id != "name" }
                         FilterChip("Name", byName) { viewState.filter(ascending, nameOrder) }
                         FilterChip("Recent", !byName) { viewState.filter(ascending, dateOrder) }
-                        // Direction: A→Z / Z→A, or oldest / newest first.
-                        IconButton(
-                            icon = if (ascending) Icons.Outlined.ArrowUpward else Icons.Outlined.ArrowDownward,
-                            contentDescription = if (ascending) "Ascending" else "Descending",
-                            onClick = { viewState.filter(!ascending, order) }
+                        // Divider between "by what" and "which way".
+                        Box(
+                            Modifier
+                                .padding(horizontal = 4.dp)
+                                .width(1.dp)
+                                .height(24.dp)
+                                .background(AppTheme.colors.onBackground.copy(alpha = 0.2f))
                         )
+                        if (byName) {
+                            FilterChip("A–Z", ascending) { viewState.filter(true, order) }
+                            FilterChip("Z–A", !ascending) { viewState.filter(false, order) }
+                        } else {
+                            FilterChip("Newest", !ascending) { viewState.filter(false, order) }
+                            FilterChip("Oldest", ascending) { viewState.filter(true, order) }
+                        }
                     }
                 }
                 // show from here only if available.

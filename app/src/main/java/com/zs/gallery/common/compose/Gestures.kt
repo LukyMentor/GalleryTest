@@ -86,7 +86,8 @@ fun Modifier.dragToDismiss(
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
             if (!enabled()) return@awaitEachGesture
-            settle?.cancel()
+            // NB: a running spring-back is only interrupted once a new drag really starts; a
+            // tap used to cancel it and leave the photo stuck half-way down.
             val tracker = VelocityTracker()
             tracker.addPosition(down.uptimeMillis, down.position)
             val slop = viewConfiguration.touchSlop
@@ -125,6 +126,7 @@ fun Modifier.dragToDismiss(
                             continue
                         }
                         total.y > 0 -> {
+                            settle?.cancel()
                             dragging = true
                             // Scale around the finger, so the spot you grabbed stays under it.
                             onDragStart(down.position)
@@ -136,7 +138,18 @@ fun Modifier.dragToDismiss(
                 if (sheet) onSheetDrag?.invoke(delta.y)
                 else offset.floatValue = (offset.floatValue + delta.y).coerceAtLeast(0f)
             }
-            if (!dragging) return@awaitEachGesture
+            if (!dragging) {
+                // Safety net: never leave the content displaced when no drag/animation owns it.
+                if (offset.floatValue != 0f && settle?.isActive != true) {
+                    val from = offset.floatValue
+                    settle = launch {
+                        animate(from, 0f, animationSpec = spring(stiffness = Spring.StiffnessMedium)) { v, _ ->
+                            offset.floatValue = v
+                        }
+                    }
+                }
+                return@awaitEachGesture
+            }
             val velocity = tracker.calculateVelocity().y
             if (sheet) {
                 // The photo never moved; just let the sheet snap open or closed.
@@ -154,7 +167,7 @@ fun Modifier.dragToDismiss(
             // Spring back to rest.
             val start = offset.floatValue
             settle = launch {
-                animate(start, 0f, animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) { value, _ ->
+                animate(start, 0f, animationSpec = spring(stiffness = Spring.StiffnessMedium)) { value, _ ->
                     offset.floatValue = value
                 }
             }

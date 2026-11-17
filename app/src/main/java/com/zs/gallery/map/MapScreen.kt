@@ -137,6 +137,7 @@ fun MapScreen() {
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
                 Configuration.getInstance().apply {
+                    load(ctx, ctx.getSharedPreferences("osmdroid", android.content.Context.MODE_PRIVATE))
                     userAgentValue = ctx.packageName
                     osmdroidBasePath = File(ctx.cacheDir, "osmdroid")
                     osmdroidTileCache = File(ctx.cacheDir, "osmdroid/tiles")
@@ -160,7 +161,11 @@ fun MapScreen() {
                 }
             },
             update = { map ->
-                map.setTileSource(if (dark) DarkTiles else LightTiles)
+                // Only switch tiles when the theme actually changed: setTileSource() wipes the
+                // tile cache and pending downloads, and this runs on every recomposition (e.g. each
+                // time the photo scan publishes progress) - that's why the map stayed empty.
+                val tiles = if (dark) DarkTiles else LightTiles
+                if (map.tileProvider.tileSource !== tiles) map.setTileSource(tiles)
                 overlay.photos = photos
                 // First time we have photos: show all of them.
                 if (!fitted && photos.isNotEmpty()) {

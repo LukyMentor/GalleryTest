@@ -119,6 +119,11 @@ import com.zs.gallery.common.compose.LocalSystemFacade
 import com.zs.gallery.common.compose.background
 import com.zs.gallery.common.compose.composable
 import com.zs.gallery.map.MapScreen
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.ui.unit.IntOffset
+import androidx.navigation.NavBackStackEntry
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.background
 import androidx.compose.ui.text.font.FontWeight
@@ -223,6 +228,30 @@ private val NavController.primary: State<String?>
                 if (isPrimary && noRealArgs) dest.domain else null
             }
         }
+    }
+
+private val TabSlideSpec = tween<IntOffset>(durationMillis = 320, easing = FastOutSlowInEasing)
+private val TabFadeSpec = tween<Float>(durationMillis = 220)
+
+/**
+ * Position of this entry among the bottom-bar tabs (Photos, Folders, Map), or -1 if it isn't
+ * one of them (e.g. a folder's photos, which share the Photos route but have arguments).
+ */
+private val NavBackStackEntry.tabIndex: Int
+    get() {
+        val index = when (destination.domain) {
+            RouteFiles.domain -> 0
+            RouteFolders.domain -> 1
+            RouteMap.domain -> 2
+            else -> return -1
+        }
+        val args = arguments
+        val noRealArgs = args == null || args.isEmpty || args.keySet().all { key ->
+            @Suppress("DEPRECATION")
+            val value = args.get(key)
+            key.startsWith("android-support-nav:controller") || value == null || value == "{$key}"
+        }
+        return if (noRealArgs) index else -1
     }
 
 private val NavRailShape = EndConcaveShape(12.dp)
@@ -579,8 +608,24 @@ fun Home(
                     startDestination = if (origin != RouteIntentViewer && !granted) RoutePermission() else origin(),
                     builder = navGraphBuilder,
                     modifier = Modifier.source(surface),
-                    enterTransition = { scaleIn(motion.slowSpatialSpec(), 0.98f) + fadeIn(motion.slowEffectsSpec()) },
-                    exitTransition = { fadeOut(motion.slowEffectsSpec()) },
+                    // Switching between Photos / Folders / Map slides in the direction of the tab
+                    // (left or right); everything else keeps the original subtle scale + fade.
+                    enterTransition = {
+                        val from = initialState.tabIndex
+                        val to = targetState.tabIndex
+                        if (from >= 0 && to >= 0 && from != to)
+                            slideInHorizontally(TabSlideSpec) { w -> if (to > from) w / 5 else -w / 5 } +
+                                    fadeIn(TabFadeSpec)
+                        else scaleIn(motion.slowSpatialSpec(), 0.98f) + fadeIn(motion.slowEffectsSpec())
+                    },
+                    exitTransition = {
+                        val from = initialState.tabIndex
+                        val to = targetState.tabIndex
+                        if (from >= 0 && to >= 0 && from != to)
+                            slideOutHorizontally(TabSlideSpec) { w -> if (to > from) -w / 5 else w / 5 } +
+                                    fadeOut(TabFadeSpec)
+                        else fadeOut(motion.slowEffectsSpec())
+                    },
                 )
             }
         )

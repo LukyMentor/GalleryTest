@@ -105,6 +105,7 @@ import com.zs.gallery.files.RouteFiles
 import com.zs.gallery.files.thumbnailCacheKey
 import com.zs.gallery.settings.Settings
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import me.saket.telephoto.zoomable.DoubleClickToZoomListener
 import me.saket.telephoto.zoomable.ZoomSpec
 import me.saket.telephoto.zoomable.ZoomableState
@@ -409,7 +410,15 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                     initialVelocity = velocity,
                     animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing)
                 ) { value, _ -> dismissOffset.floatValue = value }
-                onRequest(EVENT_BACK_PRESS)
+                if (!closing) {
+                    closing = true
+                    navController.navigateUp()
+                }
+                // If for any reason the screen is still here, don't leave the photo hanging.
+                delay(600)
+                closing = false
+                dismissedByDrag = false
+                dismissOffset.floatValue = 0f
             }
         }
     }
