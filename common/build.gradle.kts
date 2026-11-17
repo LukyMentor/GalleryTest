@@ -77,17 +77,10 @@ android {
     // -------------------------------------------------------------------------
     flavorDimensions += "edition"
     productFlavors {
-        // STANDARD → Default monetized edition.
-        // PLUS + Ad SDK
-        create("standard") { dimension = "edition" }
-
         // COMMUNITY → FOSS/open‑source build.
         // Minimal free edition with no ads, no telemetry, and no purchases.
         create("community") { dimension = "edition" }
 
-        // PLUS → Privacy-friendly edition:
-        // No Ad SDK, but telemetry and in‑app purchases.
-        create("plus") { dimension = "edition" }
 
         // PREMIUM → Full unlock build.
         // Based on Community, but with all features enabled.
@@ -116,25 +109,6 @@ android {
             )
         }*/
 
-        // Standard flavor → full/actual implementations of analytics, billing, and ads
-        getByName("standard") {
-            java.srcDirs(
-                "src/shared/analytics/actual/java",
-                "src/shared/billing/actual/java",
-                "src/shared/ads/actual/java",
-                "src/shared/market/actual/java"
-            )
-        }
-
-        // Plus flavor → only requires actual billing implementation (no analytics/ads)
-        getByName("plus") {
-            java.srcDirs(
-                "src/shared/analytics/actual/java",
-                "src/shared/billing/actual/java",
-                "src/shared/ads/stub/java",
-                "src/shared/market/actual/java"
-            )
-        }
     }
     // BUILD TYPES
     buildTypes {
@@ -158,20 +132,5 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.bundles.media3)
 
-    // Standard only
-    //"standardImplementation"(libs.bundles.play.services)
-    "standardImplementation"(libs.bundles.analytics)
-    "standardImplementation"(libs.google.billing.ktx)
-    // Play Services
-    "standardImplementation"(libs.play.app.update.ktx)
-    "standardImplementation"(libs.play.app.review.ktx)
-    // ads
-   // "standardImplementation"(libs.bundles.ads)
-    // Plus
-    "plusImplementation"(libs.bundles.analytics)
-    "plusImplementation"(libs.google.billing.ktx)
-    // Play Services
-    "plusImplementation"(libs.play.app.update.ktx)
-    "plusImplementation"(libs.play.app.review.ktx)
-    // no-ads
+    // Personal build: no Firebase, Play Services, billing or ads dependencies at all.
 }

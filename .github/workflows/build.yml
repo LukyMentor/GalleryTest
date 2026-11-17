@@ -1,0 +1,71 @@
+name: Build personal APK
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/personal.jks"
+          elif [ -f signing/personal.jks ]; then
+            cp signing/personal.jks "$RUNNER_TEMP/personal.jks"
+          else
+            echo "::warning::No signing key configured - using a throwaway key (this APK cannot update a previous build)"
+            keytool -genkeypair -keystore "$RUNNER_TEMP/personal.jks" -storetype PKCS12 -alias personal \
+              -keyalg RSA -keysize 2048 -validity 36500 -storepass personal-gallery -keypass personal-gallery \
+              -dname "CN=Throwaway"
+          fi
+          echo "SIGNING_KEYSTORE_PATH=$RUNNER_TEMP/personal.jks" >> "$GITHUB_ENV"
+
+      - name: Build release APK
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD || 'personal-gallery' }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD || 'personal-gallery' }}
+          SIGNING_KEY_ALIAS: personal
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:assembleCommunityRelease --stacktrace \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
+
+      - name: Rename APK
+        run: |
+          APK=$(ls app/build/outputs/apk/community/release/*.apk | head -n 1)
+          mv "$APK" "MyGallery-${{ github.run_number }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MyGallery-${{ github.run_number }}
+          path: MyGallery-${{ github.run_number }}.apk
+
+      - name: Publish release (direct phone download)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: My Gallery build ${{ github.run_number }}
+          body: ${{ github.event.head_commit.message }}
+          make_latest: true
+          files: MyGallery-${{ github.run_number }}.apk

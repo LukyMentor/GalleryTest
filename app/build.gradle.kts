@@ -11,8 +11,6 @@ plugins {
     alias(libs.plugins.compose.compiler)         // Compose compiler plugin
     // TODO - Find a way to apply these to only standard flavour
     // ⚠️ Currently Crashlytics + Google Services are applied globally.
-    alias(libs.plugins.crashanlytics) // Firebase Crashlytics (should be flavor-scoped)
-    alias(libs.plugins.google.services) // Google Services (should be flavor-scoped)
 }
 
 ///
@@ -94,32 +92,26 @@ android {
     // -------------------------------------------------------------------------
     // PRODUCT FLAVORS
     // -------------------------------------------------------------------------
+    // Personal build: only the FOSS (community) edition — no ads, analytics or billing.
     flavorDimensions += "edition"
     productFlavors {
-        // STANDARD (Default monetized edition: ads + telemetry + in-app purchases enabled)
-        create("standard") { dimension = "edition" }
-
-        // COMMUNITY (Open-source edition: minimal free build, no ads, no telemetry, no purchases)
         create("community") {
             dimension = "edition"
-            applicationId = "com.zs.android.apps.photos"
-            versionNameSuffix = "-foss"
+            // Own package name so it installs next to the original app.
+            applicationId = "com.lukymentor.gallery"
+            versionNameSuffix = "-lm"
         }
-
-        // PLUS (Privacy-friendly edition: ads + in-app purchases, but telemetry disabled)
-        create("plus") {
-            dimension = "edition"
-            applicationId = "com.zs.android.apps.photos"
-            versionNameSuffix = "-plus"
+    }
+    // Stable signing key so every CI build installs as an update over the previous one.
+    // The keystore is provided by CI through environment variables (see .github/workflows/build.yml).
+    val keystorePath: String? = System.getenv("SIGNING_KEYSTORE_PATH")
+    signingConfigs {
+        if (keystorePath != null) create("personal") {
+            storeFile = file(keystorePath)
+            storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+            keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+            keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
         }
-
-/*
-        // PREMIUM (Full unlock edition: all features enabled, no ads, no telemetry, no purchases)
-        create("premium") {
-            dimension = "edition"
-            versionNameSuffix = "-pro"
-            applicationIdSuffix = ".pro"
-        }*/
     }
     // -----------------------------------------------------------------------------
     // Build Types
@@ -130,6 +122,7 @@ android {
         // -------------------------------------------------------------------------
         release {
             // ⚙️ Code shrinking/obfuscation (ProGuard/R8) and resource shrinking
+            if (keystorePath != null) signingConfig = signingConfigs.getByName("personal")
             isMinifyEnabled = true          // Enable code shrinking/obfuscation
             isShrinkResources = true        // Remove unused resources to reduce APK size
 
