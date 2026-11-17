@@ -51,6 +51,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
@@ -305,6 +307,21 @@ fun Files(viewState: FilesViewState) {
             val density = LocalDensity.current
             val layoutDirection = LocalLayoutDirection.current
             val haptic = LocalHapticFeedback.current
+            // Exact column count, using the same formula as GridCells.Adaptive.
+            val minTile = Settings.STANDARD_TILE_SIZE * multiplier
+            val spacing = CP.SmallArrangement.spacing
+            val startPad = contentPadding.calculateStartPadding(layoutDirection)
+            val endPad = contentPadding.calculateEndPadding(layoutDirection)
+            val gridColumns by remember(minTile, spacing, startPad, endPad, density) {
+                derivedStateOf {
+                    with(density) {
+                        val available = state.layoutInfo.viewportSize.width -
+                                startPad.roundToPx() - endPad.roundToPx()
+                        val gap = spacing.roundToPx()
+                        maxOf((available + gap) / (minTile.roundToPx() + gap), 1)
+                    }
+                }
+            }
             Box(Modifier.fillMaxSize()) {
                 // Content
                 LazyVerticalGrid(
@@ -341,6 +358,7 @@ fun Files(viewState: FilesViewState) {
                     TimelineFastScroller(
                         state = state,
                         index = index,
+                        columns = gridColumns,
                         topPadding = contentPadding.calculateTopPadding(),
                         bottomPadding = contentPadding.calculateBottomPadding(),
                         modifier = Modifier.matchParentSize()

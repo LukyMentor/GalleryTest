@@ -101,6 +101,7 @@ import com.zs.gallery.common.compose.shine
 import com.zs.gallery.common.compose.source
 import com.zs.gallery.common.scaledInsideAndCenterAlignedFrom
 import com.zs.gallery.files.RouteFiles
+import com.zs.gallery.files.thumbnailCacheKey
 import com.zs.gallery.settings.Settings
 import kotlinx.coroutines.launch
 import me.saket.telephoto.zoomable.DoubleClickToZoomListener
@@ -179,12 +180,13 @@ private fun Carousel(
     // (A debug log that read zoomFraction here made the whole pager recompose on every zoom frame.)
     val navController = LocalNavController.current
     val ctx = LocalContext.current
-    // Decode photos at (up to) 2x the screen's long side instead of their full resolution:
-    // a 50 MP photo was decoded to ~200 MB of pixels for every page. 2x keeps zooming sharp.
+    // Decode photos at ~1.5x the screen's long side instead of their full resolution (a 50 MP
+    // photo was ~200 MB of pixels per page). BitmapFactory samples by powers of two, so this
+    // lets big photos be decoded at half size, which is what makes them open quickly.
     val windowInfo = LocalWindowInfo.current
     val decodeSize = remember(windowInfo.containerSize) {
         val longSide = maxOf(windowInfo.containerSize.width, windowInfo.containerSize.height)
-        (longSide * 2).coerceIn(1080, 4096)
+        (longSide * 1.5f).toInt().coerceIn(1080, 4096)
     }
     // Edge zone for the back swipe: the system gesture inset plus a little margin.
     val density = LocalDensity.current
@@ -233,6 +235,8 @@ private fun Carousel(
             val isFocused = state.currentPage == index
             val painter = Painter(
                 ImageRequest(ctx).apply {
+                    // Show the grid thumbnail until the full image is decoded (no black screen).
+                    placeholderMemoryCacheKey(thumbnailCacheKey(item.id))
                     // For images, set a memory cache key using the item's ID.
                     // Load the image data from its file URI instead of a image URI.
                     // This allows for consistent image loading, matching what's shown during the loading phase,
@@ -334,12 +338,6 @@ fun MediaViewer(viewState: MediaViewerViewState) {
 
     val isLoading by remember { derivedStateOf { viewState.data.isEmpty() } }
     val ctx = LocalContext.current
-    // Same bounded decode size as the carousel so the opening image is reused from memory.
-    val windowInfo = LocalWindowInfo.current
-    val placeholderDecodeSize = remember(windowInfo.containerSize) {
-        val longSide = maxOf(windowInfo.containerSize.width, windowInfo.containerSize.height)
-        (longSide * 2).coerceIn(1080, 4096)
-    }
     Scaffold(
         fabPosition = if (compact) FabPosition.Center else FabPosition.End,
         contentColor = Color.SignalWhite,
@@ -444,19 +442,14 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                     contentDescription = null,
                     alignment = Alignment.Center,
                     contentScale = ContentScale.Fit,
+                    // Just the grid thumbnail (already in memory, so instant). The full-quality
+                    // decode happens once, in the carousel, with this same thumbnail as its
+                    // placeholder - so there is never an empty/black frame in between.
                     model = ImageRequest(ctx)
-                        .memoryCacheKey("${viewState.focused}")
-                        .size(placeholderDecodeSize, placeholderDecodeSize)
-                        .scale(Scale.FIT)
+                        .memoryCacheKey(thumbnailCacheKey(viewState.focused))
                         .precision(Precision.INEXACT)
                         .data(MediaProvider.buildContentUri(viewState.focused))
-                        .preferCachedThumbnail(false)
                         .build(),
-                    placeholder = Painter(
-                        model = ImageRequest(ctx)
-                            .data(MediaProvider.buildContentUri(viewState.focused))
-                            .build(),
-                    ),
                     modifier = modifier.then(RouteFiles.sharedElement(viewState.focused)),
                 )
             // If data is loaded, display the Carousel with the media items.

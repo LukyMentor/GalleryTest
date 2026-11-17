@@ -73,10 +73,6 @@ private val BubbleColor = Color.White
 private val BubbleTextColor = Color(0xFF1B1B1F)
 private val PillShape = RoundedCornerShape(50)
 
-/** Grid columns currently laid out (the widest row seen among visible items). */
-private fun LazyGridState.columns(): Int =
-    (layoutInfo.visibleItemsInfo.maxOfOrNull { it.column } ?: 0) + 1
-
 /**
  * Aves-style fast scroller for the timeline.
  *
@@ -93,6 +89,7 @@ private fun LazyGridState.columns(): Int =
 internal fun TimelineFastScroller(
     state: LazyGridState,
     index: TimelineIndex,
+    columns: Int,
     topPadding: Dp,
     bottomPadding: Dp,
     modifier: Modifier = Modifier,
@@ -101,8 +98,9 @@ internal fun TimelineFastScroller(
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
 
-    val columns by remember(state) { derivedStateOf { state.columns() } }
-    val rows = remember(index, columns) { index.Rows(columns) }
+    // Columns come from the grid's own formula (passed in). Guessing them from the visible items
+    // was unstable and kept restarting the drag gesture, making the thumb vanish mid-drag.
+    val rows = remember(index, columns) { index.Rows(columns.coerceAtLeast(1)) }
 
     var dragging by remember { mutableStateOf(false) }
     var dragFraction by remember { mutableFloatStateOf(0f) }
@@ -191,8 +189,12 @@ internal fun TimelineFastScroller(
             )
         }
 
-        // The thumb.
+        // The thumb. Its gesture is started once (pointerInput(Unit)) and always reads the
+        // latest values, so data reloads or relayouts can never cancel a drag in progress.
         val latestRange by rememberUpdatedState(range)
+        val latestTopPx by rememberUpdatedState(topPx)
+        val latestFraction by rememberUpdatedState(currentFraction)
+        val latestIndexFor by rememberUpdatedState<(Float) -> Int>({ f -> indexForFraction(f) })
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
@@ -207,13 +209,13 @@ internal fun TimelineFastScroller(
                 .size(ThumbWidth, ThumbHeight)
                 .shadow(6.dp, PillShape)
                 .background(BubbleColor, PillShape)
-                .pointerInput(index, rows) {
+                .pointerInput(Unit) {
                     awaitEachGesture {
                         val down = awaitFirstDown()
                         down.consume()
                         // Finger position on the thumb at grab time; keeps the thumb under it.
                         val grab = down.position.y
-                        dragFraction = currentFraction()
+                        dragFraction = latestFraction()
                         dragging = true
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         try {
@@ -225,10 +227,10 @@ internal fun TimelineFastScroller(
                                 if (!change.pressed) break
                                 // Absolute y within the track = where the thumb is drawn + local y.
                                 val y = placedTop[0] + change.position.y - grab
-                                val fraction = ((y - topPx) / latestRange).coerceIn(0f, 1f)
+                                val fraction = ((y - latestTopPx) / latestRange).coerceIn(0f, 1f)
                                 if (fraction != dragFraction) {
                                     dragFraction = fraction
-                                    val target = indexForFraction(fraction)
+                                    val target = latestIndexFor(fraction)
                                     jump[0]?.cancel()
                                     jump[0] = scope.launch { state.scrollToItem(target) }
                                 }

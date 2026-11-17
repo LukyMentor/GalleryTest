@@ -89,6 +89,8 @@ fun MediaFile(
             model = remember(key1 = value.id) {
                 ImageRequest.Builder(ctx).apply {
                     data(value.mediaUri)
+                    // Stable key: the viewer reuses this thumbnail as its instant placeholder.
+                    memoryCacheKey(thumbnailCacheKey(value.id))
                 }.build()
             },
             contentDescription = value.name,
@@ -146,3 +148,6 @@ fun MediaFile(
         )
     }
 }
+
+/** Memory-cache key of the grid thumbnail for media [id]; shared with the viewer. */
+fun thumbnailCacheKey(id: Long) = "thumb_$id"
