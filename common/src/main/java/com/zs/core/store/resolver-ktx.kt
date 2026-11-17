@@ -168,8 +168,12 @@ internal suspend inline fun <T> ContentResolver.query2(
     ascending: Boolean = true,
     offset: Int = 0,
     limit: Int = Int.MAX_VALUE,
-    transform: (Cursor) -> T,
-): T = query2(uri, projection, selection, args, order, ascending, offset, limit).use(transform)
+    crossinline transform: (Cursor) -> T,
+): T = using(Dispatchers.IO) {
+    // Read the cursor on the IO dispatcher as well; iterating a large cursor pulls rows from the
+    // media provider over binder and must never happen on the main thread.
+    query2(uri, projection, selection, args, order, ascending, offset, limit).use { transform(it) }
+}
 
 /**
  * Launches an activity for result using the provided [request] [IntentSender].

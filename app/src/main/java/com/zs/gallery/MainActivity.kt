@@ -545,64 +545,11 @@ class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
         configSplashScreen()
         // Initialize
         if (isColdStart) {
-            // Trigger update flow
-            initiateUpdateFlow()
-
             // Enable secure mode if required by user settings
             if (preferences[Settings.KEY_SECURE_MODE])
                 window.setFlags(LayoutParams.FLAG_SECURE, LayoutParams.FLAG_SECURE)
 
-            // Promote media player on every 5th launch
-            // TODO - properly handle promotional content.
-            lifecycleScope.launch {
-                // Show "What's New" message if the app version has changed
-                val versionCode = packageManager.getPackageInfoCompat(packageName)?.versionCode ?: 0
-                val savedVersionCode = preferences[KEY_APP_VERSION_CODE]
-                if (savedVersionCode != versionCode) {
-                    preferences[KEY_APP_VERSION_CODE] = versionCode
-                    showPromoToast(0) // What's new
-                    return@launch
-                }
-                // check if app is installed from market other than playstore.
-                if(!isInstalledFromPlayStore && isPlayStoreAvailable()){
-                    val res = snackbarHostState.showSnackbar(
-                        resources.getText2(R.string.msg_playstore_encouragement),
-                        duration = SnackbarDuration.Indefinite,
-                        icon = Icons.Outlined.Store,
-                        action = resources.getString(R.string.get)
-                    )
-                    if (res == SnackbarResult.ActionPerformed)
-                        launchAppStore("com.googol.android.apps.photos")
-                    return@launch
-                }
-                // Promotional messages are displayed only after the app has been launched
-                // more than 5 times (MIN_LAUNCHES_BEFORE_REVIEW).
-                // This ensures that users have had a chance to familiarize themselves with the app
-                // before being presented with these messages.
-                // An index of 0 is reserved for the "What's New" message and is handled separately.
-                // Promotional messages start with index 1.
-                // The index is calculated using the formula: (counter % MAX_PROMO_MESSAGES).coerceAtLeast(1).
-                // Each message is skipped by PROMO_SKIP_LAUNCHES number of launches.
-                val counter = preferences[Settings.KEY_LAUNCH_COUNTER]
-                if (counter < MIN_LAUNCHES_BEFORE_REVIEW)
-                    return@launch
-                val newCounter = counter - MIN_LAUNCHES_BEFORE_REVIEW
-                val interval = PROMO_SKIP_LAUNCHES + 1
-                // This line calculates which promotional message to show from a rotating set.
-                Log.d(
-                    TAG,
-                    "Promo(counter=$counter," +
-                            " interval=$interval," +
-                            " newCounter=$newCounter," +
-                            " skip = ${newCounter % interval}," +
-                            " index = ${(newCounter / interval) % MAX_PROMO_MESSAGES + 1} ) "
-                )
-                if (newCounter % interval == 0) {
-                    val index = (newCounter / interval) % MAX_PROMO_MESSAGES + 1
-                    Log.d(TAG, "onCreate: $index")
-                    showPromoToast(index)
-                }
-            }
+            // Personal build: no "what's new", Play Store or promotional popups on launch.
         }
         // Set up the window to fit the system windows
         // This setting is usually configured in the app theme, but is ensured here

@@ -43,6 +43,18 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.MutableFloatState
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.foundation.layout.systemGestures
+import coil3.size.Precision
+import coil3.size.Scale
+import com.zs.gallery.common.compose.dragToDismiss
+import com.zs.gallery.common.compose.edgeSwipeBack
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -120,6 +132,7 @@ private val ZoomableState.isZoomedOut get() = (zoomFraction ?: 0f) <= 0.0001f
 private fun Carousel(
     viewState: MediaViewerViewState,
     onRequest: (event: Int) -> Unit,
+    dismissOffset: MutableFloatState,
     modifier: Modifier = Modifier,
 ) {
     val data = viewState.data
@@ -163,14 +176,51 @@ private fun Carousel(
     // Horizontal pager to display the images/videos
     // Disable swipe when zoomed in
     // Preload adjacent pages for smoother transitions
-    Log.d(TAG, "MainContent - ZoomFraction: ${zoomable.zoomFraction}")
+    // (A debug log that read zoomFraction here made the whole pager recompose on every zoom frame.)
     val navController = LocalNavController.current
     val ctx = LocalContext.current
+    // Decode photos at (up to) 2x the screen's long side instead of their full resolution:
+    // a 50 MP photo was decoded to ~200 MB of pixels for every page. 2x keeps zooming sharp.
+    val windowInfo = LocalWindowInfo.current
+    val decodeSize = remember(windowInfo.containerSize) {
+        val longSide = maxOf(windowInfo.containerSize.width, windowInfo.containerSize.height)
+        (longSide * 2).coerceIn(1080, 4096)
+    }
+    // Edge zone for the back swipe: the system gesture inset plus a little margin.
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val systemGestures = WindowInsets.systemGestures
+    val edgeZone = {
+        val inset = maxOf(
+            systemGestures.getLeft(density, layoutDirection),
+            systemGestures.getRight(density, layoutDirection)
+        ).toFloat()
+        with(density) { maxOf(inset + 12.dp.toPx(), 32.dp.toPx()) }
+    }
     HorizontalPager(
         state = state,
         key = { data[it].id },
         pageSpacing = ContentPadding.normal,
-        modifier = modifier,
+        modifier = modifier
+            .edgeSwipeBack(
+                enabled = { zoomable.isZoomedOut },
+                edge = edgeZone,
+                onBack = { onRequest(EVENT_BACK_PRESS) }
+            )
+            .dragToDismiss(
+                enabled = { zoomable.isZoomedOut },
+                offset = dismissOffset,
+                onDismiss = { onRequest(EVENT_BACK_PRESS) }
+            )
+            .graphicsLayer {
+                // Follow the finger and shrink slightly while dragging down.
+                val offset = dismissOffset.floatValue
+                val progress = (offset / (size.height * 0.5f)).coerceIn(0f, 1f)
+                translationY = offset
+                val scale = 1f - 0.25f * progress
+                scaleX = scale
+                scaleY = scale
+            },
         userScrollEnabled = zoomable.isZoomedOut,
         beyondViewportPageCount = 1,
         pageContent = { index ->
@@ -194,13 +244,14 @@ private fun Carousel(
                     if (item.isImage) {
                         memoryCacheKey("${item.id}")
                         data(MediaProvider.buildContentUri(item.id))
-                        this.size(coil3.size.Size.ORIGINAL)
+                        this.size(decodeSize, decodeSize)
+                        this.scale(Scale.FIT)
+                        this.precision(Precision.INEXACT)
                         preferCachedThumbnail(false)
                     } else data(item.mediaUri)
                 }.build(),
                 onSuccess = {
                     val size = it.painter.intrinsicSize
-                    Log.d(TAG, "Carousel success: ${size}")
                     if (isFocused)
                         scope.launch { zoomable.scaledInsideAndCenterAlignedFrom(size) }
                 },
@@ -210,7 +261,6 @@ private fun Carousel(
             if (isFocused) {
                 viewState.focused = item.id
                 zoomable.scaledInsideAndCenterAlignedFrom(painter.intrinsicSize)
-                Log.d(TAG, "Carousel focused: ${painter.intrinsicSize}")
             }
             // The content
             Image(
@@ -243,6 +293,11 @@ private fun Carousel(
 fun MediaViewer(viewState: MediaViewerViewState) {
     //
     var immersive by remember { mutableStateOf(false) }
+    // Guards against closing twice (e.g. our edge swipe + the system back gesture together).
+    var closing by remember { mutableStateOf(false) }
+    // Vertical drag-to-dismiss offset in px, shared by the pager and the background fade.
+    val dismissOffset = remember { mutableFloatStateOf(0f) }
+    val isDragging by remember { derivedStateOf { dismissOffset.floatValue > 0f } }
     val compact = LocalWindowSize.current.width < Category.Medium
     val surface = rememberAcrylicSurface()
     val colors = AppTheme.colors
@@ -261,12 +316,12 @@ fun MediaViewer(viewState: MediaViewerViewState) {
             // Handle back press events, prioritizing focused states (immersive, details)
             // before navigating up.
             EVENT_BACK_PRESS if viewState.showDetails -> viewState.showDetails = false
-            EVENT_BACK_PRESS if immersive -> {
-                immersive = false
-                facade.style += WindowStyle.FLAG_SYSTEM_BARS_VISIBLE
+            // Back closes the viewer straight away, also from immersive (UI hidden) mode;
+            // the original system-bar style is restored when the screen is disposed.
+            EVENT_BACK_PRESS -> if (!closing) {
+                closing = true
+                navController.navigateUp()
             }
-            // Navigate up if no focused states
-            EVENT_BACK_PRESS -> navController.navigateUp()
             // This must not happen.
             else -> error("Received unexpected event: $request")
         }
@@ -279,15 +334,25 @@ fun MediaViewer(viewState: MediaViewerViewState) {
 
     val isLoading by remember { derivedStateOf { viewState.data.isEmpty() } }
     val ctx = LocalContext.current
+    // Same bounded decode size as the carousel so the opening image is reused from memory.
+    val windowInfo = LocalWindowInfo.current
+    val placeholderDecodeSize = remember(windowInfo.containerSize) {
+        val longSide = maxOf(windowInfo.containerSize.width, windowInfo.containerSize.height)
+        (longSide * 2).coerceIn(1080, 4096)
+    }
     Scaffold(
         fabPosition = if (compact) FabPosition.Center else FabPosition.End,
         contentColor = Color.SignalWhite,
-        //
-        containerColor = Color.Black,
+        // Black backdrop that fades out while the photo is dragged down (read in draw phase).
+        containerColor = Color.Transparent,
+        modifier = Modifier.drawBehind {
+            val progress = (dismissOffset.floatValue / (size.height * 0.4f)).coerceIn(0f, 1f)
+            drawRect(Color.Black.copy(alpha = 1f - progress))
+        },
         // TopAppBar
         topBar = {
             MediaViewerTopAppBar(
-                visible = !immersive && !isLoading,
+                visible = !immersive && !isLoading && !isDragging,
                 title = viewState.title,
                 provider = surface,
                 navigationIcon = {
@@ -310,7 +375,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
         floatingActionButton = {
             val actions = viewState.actions
             FloatingActionMenu(
-                visible = !immersive && !isLoading,
+                visible = !immersive && !isLoading && !isDragging,
                 background = colors.background(surface, luminance = -1f),
                 modifier = Modifier.windowInsetsPadding(
                     WindowInsets.systemBars.only(WindowInsetsSides.Bottom + WindowInsetsSides.End)
@@ -341,6 +406,9 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                     // Crossfade animation for the ambient background when the focused item changes.
                     viewState.focused,
                     modifier = Modifier
+                        .graphicsLayer {
+                            alpha = 1f - (dismissOffset.floatValue / (size.height * 0.4f)).coerceIn(0f, 1f)
+                        }
                         .thenIf(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             blur(100.dp)
                         }
@@ -378,7 +446,9 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                     contentScale = ContentScale.Fit,
                     model = ImageRequest(ctx)
                         .memoryCacheKey("${viewState.focused}")
-                        .size(coil3.size.Size.ORIGINAL)
+                        .size(placeholderDecodeSize, placeholderDecodeSize)
+                        .scale(Scale.FIT)
+                        .precision(Precision.INEXACT)
                         .data(MediaProvider.buildContentUri(viewState.focused))
                         .preferCachedThumbnail(false)
                         .build(),
@@ -390,7 +460,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                     modifier = modifier.then(RouteFiles.sharedElement(viewState.focused)),
                 )
             // If data is loaded, display the Carousel with the media items.
-            else Carousel(viewState, onRequest, modifier = modifier)
+            else Carousel(viewState, onRequest, dismissOffset, modifier = modifier)
         }
     )
 

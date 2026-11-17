@@ -119,6 +119,7 @@ import com.zs.core.billing.Paymaster
 import com.zs.gallery.R
 import com.zs.gallery.common.IAP_BUY_ME_COFFEE
 import com.zs.gallery.common.NightMode
+import com.zs.gallery.common.compose.blockVerticalDrag
 import com.zs.gallery.common.compose.FloatingLargeTopAppBar
 import com.zs.gallery.common.compose.LocalSystemFacade
 import com.zs.gallery.common.compose.background
@@ -597,6 +598,7 @@ fun Settings(viewState: SettingsViewState) {
             FloatingLargeTopAppBar(
                 title = { Label(textResource(R.string.settings)) },
                 scrollBehavior = topAppBarScrollBehavior,
+                modifier = Modifier.blockVerticalDrag(),
                 background = colors.background(surface),
                 insets = WindowInsets.systemBars.only(WindowInsetsSides.Top),
                 navigationIcon = {

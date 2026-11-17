@@ -47,6 +47,14 @@ import androidx.compose.material.icons.outlined.RemoveCircle
 import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -79,6 +87,7 @@ import com.zs.core.store.MediaFile
 import com.zs.gallery.R
 import com.zs.gallery.common.Action
 import com.zs.gallery.common.SelectionTracker
+import com.zs.gallery.common.compose.blockVerticalDrag
 import com.zs.gallery.common.compose.FloatingActionMenu
 import com.zs.gallery.common.compose.FloatingLargeTopAppBar
 import com.zs.gallery.common.compose.LocalNavController
@@ -138,6 +147,8 @@ fun Files(viewState: FilesViewState) {
                 background = colors.background(surface),
                 insets = WindowInsets.systemBars.only(WindowInsetsSides.Top),
                 scrollBehavior = topAppBarScrollBehavior,
+                // Collapse only via the grid's scroll, never by dragging the bar itself.
+                modifier = Modifier.blockVerticalDrag(),
                 navigationIcon = {
                     val facade = LocalSystemFacade.current
                     when {
@@ -147,20 +158,12 @@ fun Files(viewState: FilesViewState) {
                             modifier = Modifier.minimumInteractiveComponentSize(),
                         )
 
-                        else -> IconButton(
-                            onClick = {
-                                facade.showSnackbar(
-                                    R.string.what_s_new_latest,
-                                    duration = SnackbarDuration.Indefinite
-                                )
-                            },
-                            content = {
-                                Icon(
-                                    ImageVector.Drawable(R.drawable.ic_app),
-                                    contentDescription = null,
-                                    tint = Color.Unspecified
-                                )
-                            }
+                        // Plain app icon; the "what's new" popup was removed.
+                        else -> Icon(
+                            ImageVector.Drawable(R.drawable.ic_app),
+                            contentDescription = null,
+                            tint = Color.Unspecified,
+                            modifier = Modifier.minimumInteractiveComponentSize(),
                         )
                     }
                 },
@@ -196,7 +199,7 @@ fun Files(viewState: FilesViewState) {
                     // Label
                     Surface(color = AppTheme.colors.accent, shape = AppTheme.shapes.medium) {
                         Label(
-                            text = "${viewState.selected.size}",
+                            text = "${viewState.selectedCount}",
                             style = AppTheme.typography.title2,
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.padding(horizontal = CP.medium, vertical = CP.small)
@@ -227,16 +230,15 @@ fun Files(viewState: FilesViewState) {
             val navController = LocalNavController.current
             //
             val data = viewState.data
-            val selected = viewState.selected
             // Data
             val content: LazyGridScope.() -> Unit = content@{
                 // emit state or return non-null | non empty data points
                 val data = emit(data) ?: return@content
                 // items along with sticky headers
                 for ((header, items) in data) {
-                    // Selection level of the group.
-                    val level by viewState.isGroupSelected(header.toString())
                     stickyHeader(state, key = header, contentType = "header") {
+                        // Selection level of the group.
+                        val level by remember(header) { viewState.isGroupSelected(header.toString()) }
                         Row(
                             Modifier.padding(HeaderPadding),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -261,22 +263,23 @@ fun Files(viewState: FilesViewState) {
                         contentType = { "media_file" },
                         itemContent = { item ->
                             //
+                            // Long-press is handled by dragToSelect on the grid (select + drag
+                            // to extend), so tiles only handle plain taps.
                             val clickable = Modifier.clickable(
                                 onClick = {
-                                    if (selected.isNotEmpty())
+                                    if (viewState.isInSelectionMode)
                                         viewState.select(item.id)
                                     else
                                         navController.navigate(viewState.direction(item.id))
-                                },
-                                onLongClick = { viewState.select(item.id) }
+                                }
                             )
                             //
                             MediaFile(
                                 focused = false,
                                 value = item,
                                 checked = when {
-                                    selected.isEmpty() -> -1
-                                    selected.contains(item.id) -> 1
+                                    !viewState.isInSelectionMode -> -1
+                                    viewState.isSelected(item.id) -> 1
                                     else -> 0
                                 },
                                 modifier = Modifier
@@ -291,22 +294,57 @@ fun Files(viewState: FilesViewState) {
                     section()
                 }
             }
-            // Content
-            LazyVerticalGrid(
-                state = state,
-                columns = GridCells.Adaptive(Settings.STANDARD_TILE_SIZE * multiplier),
-                horizontalArrangement = CP.SmallArrangement,
-                verticalArrangement = CP.SmallArrangement,
-                contentPadding = (inAppNavInsets.add(WindowInsets.content)
-                    .union(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))).asPaddingValues() +
-                        (Padding(end = if (!compact) CP.large else 0.dp) + Padding(horizontal = CP.medium)),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .fadingEdge2(length = 56.dp)
-                    .source(surface)
-                    .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
-                content = content
-            )
+            val contentPadding = (inAppNavInsets.add(WindowInsets.content)
+                .union(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))).asPaddingValues() +
+                    (Padding(end = if (!compact) CP.large else 0.dp) + Padding(horizontal = CP.medium))
+            // Position model shared by the fast scroller and drag-to-select.
+            val timeline = remember(data) { data?.takeIf { it.isNotEmpty() }?.let(::TimelineIndex) }
+            val currentTimeline by rememberUpdatedState(timeline)
+            val currentPadding by rememberUpdatedState(contentPadding)
+            val density = LocalDensity.current
+            val layoutDirection = LocalLayoutDirection.current
+            val haptic = LocalHapticFeedback.current
+            Box(Modifier.fillMaxSize()) {
+                // Content
+                LazyVerticalGrid(
+                    state = state,
+                    columns = GridCells.Adaptive(Settings.STANDARD_TILE_SIZE * multiplier),
+                    horizontalArrangement = CP.SmallArrangement,
+                    verticalArrangement = CP.SmallArrangement,
+                    contentPadding = contentPadding,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .dragToSelect(
+                            state = state,
+                            index = { currentTimeline },
+                            contentOffset = {
+                                with(density) {
+                                    Offset(
+                                        currentPadding.calculateStartPadding(layoutDirection).toPx(),
+                                        currentPadding.calculateTopPadding().toPx()
+                                    )
+                                }
+                            },
+                            isSelected = viewState::isSelected,
+                            setSelected = viewState::setSelected,
+                            onStart = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
+                        )
+                        .fadingEdge2(length = 56.dp)
+                        .source(surface)
+                        .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
+                    content = content
+                )
+                // Aves-style "jump to month" scroller on the right edge.
+                val index = timeline
+                if (index != null)
+                    TimelineFastScroller(
+                        state = state,
+                        index = index,
+                        topPadding = contentPadding.calculateTopPadding(),
+                        bottomPadding = contentPadding.calculateBottomPadding(),
+                        modifier = Modifier.matchParentSize()
+                    )
+            }
         }
     )
 }

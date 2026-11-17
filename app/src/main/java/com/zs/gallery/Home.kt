@@ -418,7 +418,7 @@ private fun NavigationBar(
             label = { Label(text = textResource(R.string.timeline)) },
             icon = { Icon(imageVector = Icons.Filled.PhotoLibrary, contentDescription = null) },
             selected = primary == RouteFiles.domain,
-            onClick = { facade.initiateReviewFlow(); navController.toRoute(RouteFiles) },
+            onClick = { navController.toRoute(RouteFiles) },
             isBottomNav = isBottomAligned,
             colors = colors
         )
@@ -428,7 +428,7 @@ private fun NavigationBar(
             label = { Label(text = textResource(R.string.folders)) },
             icon = { Icon(imageVector = Icons.Filled.FolderCopy, contentDescription = null) },
             selected = primary == RouteFolders.domain,
-            onClick = { facade.initiateReviewFlow(); navController.toRoute(RouteFolders) },
+            onClick = { navController.toRoute(RouteFolders) },
             isBottomNav = isBottomAligned,
             colors = colors
         )
@@ -462,21 +462,6 @@ private fun NavigationBar(
                 content = { Row(modifier = Modifier.padding(horizontal = ContentPadding.normal)) { routes() } },   // Display routes at the contre of available space
             )
 
-            FloatingActionButton(
-                content = {
-                    Icon(imageVector = Icons.Filled.Camera, contentDescription = null)
-                },
-                onClick = {
-                    val intent = Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA){
-                        // Ensures the intent opens in a new independent task
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    // Verify that a camera app exists on the device before launching
-                    if (intent.resolveActivity((facade as Context).packageManager) != null) {
-                        facade.launch(intent)
-                    }
-                }
-            )
         }
 
         isBottomAligned -> FloatingBottomNavigationBar(

@@ -102,7 +102,8 @@ class CoilInitializer : Initializer<Unit> {
         // Construct imageLoader
         val loader = ImageLoader(context)
             .error(error)
-            .crossfade(AnimationConstants.DefaultDurationMillis)
+            // Short fade: long fades make fast scrolling feel laggy (memory-cache hits never fade).
+            .crossfade(100)
             .components {
                 add(ThumbnailFetcher.Factory())
                 add(SvgDecoder.Factory())

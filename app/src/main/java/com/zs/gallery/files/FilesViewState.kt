@@ -101,4 +101,13 @@ interface FilesViewState : SelectionTracker {
 
     /** @return the navigation route for the [id]*/
     fun direction(id: Long): String
+
+    /** Number of selected items (cheap; doesn't copy the selection). */
+    val selectedCount: Int
+
+    /** O(1) check whether the item with [id] is selected. */
+    fun isSelected(id: Long): Boolean
+
+    /** Selects ([value] = true) or deselects all [ids] in one go; used by drag-to-select. */
+    fun setSelected(ids: Collection<Long>, value: Boolean)
 }

@@ -76,7 +76,8 @@ fun MediaFile(
     checked: Int, // -1 for show selected circle; pass 0 for unchecked, 1 for checked.
     modifier: Modifier = Modifier,
 ) {
-    val elevation = if (kotlin.random.Random.nextBoolean()) 0.5.dp else 1.dp
+    // Deterministic per item (was random on every recomposition, making tiles flicker shade).
+    val elevation = if (value.id % 2L == 0L) 0.5.dp else 1.dp
     Box(modifier = Modifier.background(AppTheme.colors.background(elevation = elevation)) then modifier) {
         val selected = checked == 1
         val progress by animateFloatAsState(

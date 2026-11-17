@@ -63,6 +63,7 @@ import com.zs.compose.theme.text.Label
 import com.zs.compose.theme.text.TonalHeader
 import com.zs.core.store.Folder
 import com.zs.gallery.R
+import com.zs.gallery.common.compose.blockVerticalDrag
 import com.zs.gallery.common.compose.Filters
 import com.zs.gallery.common.compose.FloatingLargeTopAppBar
 import com.zs.gallery.common.compose.LocalNavController
@@ -105,6 +106,7 @@ fun Folders(viewState: FoldersViewState) {
                 title = { Label(stringResource(R.string.folders)) },
                 background = colors.background(surface),
                 scrollBehavior = topAppBarScrollBehavior,
+                modifier = Modifier.blockVerticalDrag(),
                 navigationIcon = {
                     Icon(
                         imageVector = Icons.Outlined.FolderCopy,

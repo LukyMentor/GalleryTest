@@ -83,6 +83,9 @@ fun Colors.background(
     Modifier.hazeEffect(state = surface) {
         this.blurEnabled = true
         this.blurRadius =  blurRadius
+        // Blur a half-resolution copy of the content behind the bar: visually the same at this
+        // radius, but much cheaper to redraw every frame while the grid scrolls.
+        this.inputScale = HazeInputScale.Fixed(0.5f)
         this.backgroundColor = containerColor
         // Disable noise factor on Android versions below 12.
         this.noiseFactor = noiseFactor

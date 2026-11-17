@@ -91,9 +91,14 @@ class ThumbnailFetcher(
             // Early exit if the URI is not a content URI
             if (data.scheme != ContentResolver.SCHEME_CONTENT) return null
 
-            val context = options.context
-            // Retrieve the MIME type of the content
-            val mimeType = context.contentResolver.getType(data.toAndroidUri()) ?: return null
+            // Work out the media kind from the URI itself when possible; asking the resolver for
+            // the MIME type is a binder call to MediaProvider for every single thumbnail.
+            val path = data.path ?: ""
+            val mimeType = when {
+                path.contains("/images/") -> "image/*"
+                path.contains("/video/") -> "video/*"
+                else -> options.context.contentResolver.getType(data.toAndroidUri()) ?: return null
+            }
 
             // Check if the MIME type is supported (image or video)
             if (!mimeType.startsWith("image/") && !mimeType.startsWith("video/")) {
@@ -218,11 +223,6 @@ class ThumbnailFetcher(
             ) < 1.0
         }
 
-        // Log debugging information
-        Log.d(
-            TAG,
-            "fetch - DstSize: $dstSize | SrcSize: ${srcWidth}x$srcHeight | isSampled: $isSampled"
-        )
 
         // Return the decoded drawable result
         // Return the decoded drawable result

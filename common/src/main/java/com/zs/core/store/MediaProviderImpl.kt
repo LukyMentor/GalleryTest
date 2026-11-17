@@ -297,12 +297,14 @@ internal class MediaProviderImpl(context: Context) : MediaProvider {
         val selection =  // Select only the mediaTypes of Image and Video
         // Filter out trashed items on Android 10+
             // Select only media of type Image or Video.
+            // (Parenthesised: without them Kotlin parsed the later clauses as part of the first
+            //  `else` branch, silently dropping the parent/name filters on Android 10+.)
             "(${COLUMN_MEDIA_TYPE} = $MEDIA_TYPE_IMAGE OR $COLUMN_MEDIA_TYPE = ${MEDIA_TYPE_VIDEO})" +
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) " AND $COLUMN_IS_TRASHED != 1" else "" +
-                            // Filter by parent directory if provided.
-                            if (parent != null) " AND $COLUMN_PATH LIKE ?" else "" +
-                                    // Add name filter if provided.
-                                    if (filter != null) " AND $COLUMN_NAME LIKE ?" else ""
+                    (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) " AND $COLUMN_IS_TRASHED != 1" else "") +
+                    // Filter by parent directory if provided.
+                    (if (parent != null) " AND $COLUMN_PATH LIKE ?" else "") +
+                    // Add name filter if provided.
+                    (if (filter != null) " AND $COLUMN_NAME LIKE ?" else "")
         // query for files.
         return resolver.query2(
             uri = EXTERNAL_CONTENT_URI,
@@ -342,8 +344,8 @@ internal class MediaProviderImpl(context: Context) : MediaProvider {
         //language = SQL
         val selection =
             "(${COLUMN_MEDIA_TYPE} = $MEDIA_TYPE_IMAGE OR $COLUMN_MEDIA_TYPE = ${MEDIA_TYPE_VIDEO})" +
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) " AND $COLUMN_IS_TRASHED != 1" else "" +
-                            if (filter != null) " AND $COLUMN_NAME LIKE ?" else ""
+                    (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) " AND $COLUMN_IS_TRASHED != 1" else "") +
+                    (if (filter != null) " AND $COLUMN_NAME LIKE ?" else "")
         return resolver.query2(
             EXTERNAL_CONTENT_URI,
             arrayOf(COLUMN_ID, COLUMN_PATH, COLUMN_SIZE, COLUMN_DATE_MODIFIED),
@@ -352,9 +354,11 @@ internal class MediaProviderImpl(context: Context) : MediaProvider {
             order = COLUMN_DATE_MODIFIED,
             ascending = ascending
         ) { c ->
-            val list = ArrayList<Folder>()
+            // Keyed by folder path; LinkedHashMap keeps first-seen (newest) order and avoids the
+            // previous linear search per row (O(rows × folders)).
+            val folders = LinkedHashMap<String, Folder>()
             while (c.moveToNext()) {
-                val path = c.getString(1)
+                val path = c.getString(1) ?: continue
                 val parent = PathUtils.parent(path).let {
                     if (PathUtils.name(it).startsWith("img", true)) PathUtils.parent(it)
                     else it
@@ -362,14 +366,13 @@ internal class MediaProviderImpl(context: Context) : MediaProvider {
                 val id = c.getLong(0)
                 val size = c.getInt(2)
                 val lastModified = c.getLong(3) * 1000
-                val index = list.indexOfFirst { it.path == parent }
-                if (index == -1) {
-                    list += Folder(id, parent, 1, size, lastModified)
+                val old = folders[parent]
+                if (old == null) {
+                    folders[parent] = Folder(id, parent, 1, size, lastModified)
                     continue
                 }
-                val old = list[index]
                 val artwork = if (old.lastModified > lastModified) old.artworkID else id
-                list[index] = Folder(
+                folders[parent] = Folder(
                     artwork,
                     parent,
                     old.count + 1,
@@ -377,7 +380,7 @@ internal class MediaProviderImpl(context: Context) : MediaProvider {
                     maxOf(old.lastModified, lastModified)
                 )
             }
-            list
+            ArrayList(folders.values)
         }
     }
 

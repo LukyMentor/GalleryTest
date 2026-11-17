@@ -39,6 +39,7 @@ import androidx.compose.material.icons.twotone.Star
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
@@ -72,7 +73,9 @@ import com.zs.gallery.files.RouteFiles.SOURCE_TIMELINE
 import com.zs.gallery.files.get
 import com.zs.gallery.settings.Settings
 import com.zs.gallery.viewer.RouteViewer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
@@ -88,9 +91,7 @@ private val UN_STAR = Action(R.string.unlike, Icons.TwoTone.Star)
 private val SELECT_ALL = Action(R.string.select_all, Icons.Outlined.SelectAll)
 private val RESTORE = Action(R.string.restore, Icons.Outlined.Restore)
 private val EMPTY_BIN = Action(R.string.empty_bin, Icons.Outlined.PlaylistRemove)
-private val STAR_APP = Action(R.string.rate_us, Icons.TwoTone.HotelClass)
 private val QUICK_SHARE = Action(R.string.beam, Icons.Filled.NearbyShare)
-private val TELEGRAM = Action(R.string.report, Icons.Outlined.SupportAgent)
 private val SETTINGS = Action.SETTINGS
 
 @SuppressLint("NewApi")
@@ -121,13 +122,22 @@ class FilesViewModel(
     override var data: Mapped<MediaFile>? by mutableStateOf(null)
 
     // Represents the
-    override fun clear() = selected.clear()
-    override val selected = mutableStateListOf<Long>()
-    override val isInSelectionMode: Boolean by derivedStateOf(selected::isNotEmpty)
+    // Selection is kept in a hash set: membership checks are O(1), which matters for drag-select
+    // (hundreds of items) and for every grid cell asking "am I selected?" on each frame.
+    private val selection = mutableStateSetOf<Long>()
+    override fun clear() = selection.clear()
+    override val selected: List<Long> get() = selection.toList()
+    override val selectedCount: Int get() = selection.size
+    override fun isSelected(id: Long): Boolean = id in selection
+    override val isInSelectionMode: Boolean by derivedStateOf { selection.isNotEmpty() }
     override val allSelected: Boolean by derivedStateOf {
         // FixMe: For now this seems reasonable.
         //      However take the example of the case when size is same but ids are different
-        selected.size == data?.values?.sumOf { it.size }
+        selection.size == data?.values?.sumOf { it.size }
+    }
+
+    override fun setSelected(ids: Collection<Long>, value: Boolean) {
+        if (value) selection.addAll(ids) else selection.removeAll(ids.toSet())
     }
 
 
@@ -139,9 +149,9 @@ class FilesViewModel(
      */
     fun consume(): LongArray {
         // Efficiently convert the list to an array.
-        val data = selected.toLongArray()
+        val data = selection.toLongArray()
         // Clear the selected items list.
-        selected.clear()
+        selection.clear()
         Log.d(TAG, "consume: ${data.size}")
         return data
     }
@@ -150,25 +160,19 @@ class FilesViewModel(
         val data = data ?: return
         // Iterate through all items in the data and select them if they are not already selected.
         data.forEach { _, items ->
-            items.forEach { item ->
-                val id = item.id
-                if (!selected.contains(id)) {
-                    selected.add(id)
-                }
-            }
+            items.forEach { item -> selection.add(item.id) }
         }
     }
 
     override fun select(id: Long) {
-        val contains = selected.contains(id)
-        if (contains) selected.remove(id) else selected.add(id)
+        if (!selection.remove(id)) selection.add(id)
     }
 
     fun evaluateGroupSelectionLevel(key: String): Level {
         // Return NONE if data is not available.
         val data = data?.get(key) ?: return Level.NONE
         // Count selected
-        val count = data.count { it.id in selected }
+        val count = data.count { it.id in selection }
         return when (count) {
             data.size -> Level.FULL // All items in the group are selected.
             in 1..data.size -> Level.PARTIAL // Some items in the group are selected.
@@ -188,9 +192,8 @@ class FilesViewModel(
         val all = data[key]?.map { it.id } ?: emptyList()
         // Update the selected items based on the group selection level.
         when (level) {
-            Level.NONE -> selected.addAll(all) // Select all items in the group.
-            Level.PARTIAL -> selected.addAll(all.filterNot { it in selected }) // Select only unselected items.
-            Level.FULL -> selected.removeAll(all.filter { it in selected }) // Deselect all selected items.
+            Level.NONE, Level.PARTIAL -> selection.addAll(all) // Select every item of the group.
+            Level.FULL -> selection.removeAll(all.toSet()) // Deselect all items of the group.
         }
     }
 
@@ -214,7 +217,7 @@ class FilesViewModel(
             }
             // Handle actions for Timeline when not in selection mode
             else if (source == SOURCE_TIMELINE && !isInSelectionMode) {
-                this += STAR_APP; this += TELEGRAM; this += SETTINGS
+                this += SETTINGS
             }
             // Handle actions for Favorites when not in selection mode
             else if (source == SOURCE_FAV && !isInSelectionMode) {
@@ -239,7 +242,7 @@ class FilesViewModel(
             val focused = when {
                 // If there are selected items, consume them.
                 // "consume()" clears the selection and returns the selected item IDs.
-                selected.isNotEmpty() -> consume()
+                selection.isNotEmpty() -> consume()
                 // Otherwise, if no items are selected, consider all items in the current view as focused.
                 // This is relevant for actions like "Empty Bin" or "Unlike" (when viewing favorites).
                 else -> {
@@ -262,10 +265,7 @@ class FilesViewModel(
                 STAR -> toggleLike(*focused)
                 UN_STAR -> toggleLike(*focused)
                 EMPTY_BIN -> delete(resolver = resolver, *focused)
-                // TODO - Instead of this; launch app-intent.
-                STAR_APP -> (resolver as MainActivity).launchAppStore()
                 SELECT_ALL -> selectAll()
-                TELEGRAM -> resolver.startActivity(Settings.TelegramIntent)
                 // Handle sharing files.
                 SHARE -> {
                     val result = runCatching {
@@ -290,9 +290,16 @@ class FilesViewModel(
         }
     }
 
-    val onRequestUpdate: suspend (List<MediaFile>) -> Unit = { values ->
-        data = if (source == SOURCE_BIN)
-            values.groupBy() { (it.expires - System.currentTimeMillis()).milliseconds.inWholeDays }
+    /**
+     * Groups [values] (already sorted newest first) into labelled sections.
+     *
+     * Runs off the main thread. The timeline groups by calendar day: the day is computed with
+     * cheap arithmetic per item and the (expensive, locale-aware) label is formatted only once per
+     * day instead of once per photo.
+     */
+    private fun group(values: List<MediaFile>): Mapped<MediaFile> {
+        if (source == SOURCE_BIN)
+            return values.groupBy { (it.expires - System.currentTimeMillis()).milliseconds.inWholeDays }
                 // Transform the keys to user-friendly labels
                 .mapKeys { (daysLeft, _) ->
                     when {
@@ -304,16 +311,28 @@ class FilesViewModel(
                         ) // Format remaining days
                     }.toString()
                 }
-        //
-        else
-            values.groupBy {
-                DateUtils.getRelativeTimeSpanString(
-                    it.dateModified,
-                    System.currentTimeMillis(),
-                    DateUtils.DAY_IN_MILLIS
+        val now = System.currentTimeMillis()
+        val zone = java.util.TimeZone.getDefault()
+        val result = LinkedHashMap<CharSequence, MutableList<MediaFile>>()
+        var currentDay = Long.MIN_VALUE
+        var current: MutableList<MediaFile>? = null
+        for (file in values) {
+            val time = file.dateModified
+            val day = Math.floorDiv(time + zone.getOffset(time), DateUtils.DAY_IN_MILLIS)
+            if (day != currentDay || current == null) {
+                currentDay = day
+                val label = DateUtils.getRelativeTimeSpanString(
+                    time, now, DateUtils.DAY_IN_MILLIS
                 ).toString()
+                // Same label twice (e.g. unsorted input) -> append to the existing section.
+                current = result.getOrPut(label) { ArrayList() }
             }
+            current!!.add(file)
+        }
+        return result
     }
+
+    val onRequestUpdate: suspend (Mapped<MediaFile>) -> Unit = { values -> data = values }
 
     init {
         provider.observer(MediaProvider.EXTERNAL_CONTENT_URI)
@@ -348,6 +367,9 @@ class FilesViewModel(
                     }
                 }
             }
+            // Query + grouping happen on a background thread; only the result touches the UI.
+            .map { values -> group(values) }
+            .flowOn(Dispatchers.Default)
             .onEach(onRequestUpdate)
             .catch { exception ->
                 Log.d(TAG, "provider: ${exception.stackTraceToString()}")
