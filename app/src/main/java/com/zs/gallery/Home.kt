@@ -119,6 +119,7 @@ import com.zs.gallery.common.compose.LocalSystemFacade
 import com.zs.gallery.common.compose.background
 import com.zs.gallery.common.compose.composable
 import com.zs.gallery.map.MapScreen
+import androidx.compose.runtime.SideEffect
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -666,6 +667,9 @@ fun Home(
             NightMode.FOLLOW_SYSTEM -> isSystemInDarkTheme()
         }
     }
+
+    // Plain Android dialogs (rename, folder picker) follow the app's light/dark choice.
+    SideEffect { com.zs.gallery.common.FileOps.darkTheme = isDark }
 
     // Setup App Theme and provide necessary dependencies.
     // Provide the navController and window size class to child composable.

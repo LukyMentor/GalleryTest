@@ -112,7 +112,7 @@ import com.zs.gallery.common.compose.ContentPadding as CP
 /**
  * The min size of the single cell in grid.
  */
-private val DEF_MIN_TILE_SIZE = 100.dp
+private val DEF_MIN_TILE_SIZE = 150.dp // bigger folders: 2 per row on phones (was 3)
 
 @Composable
 fun Folders(viewState: FoldersViewState) {

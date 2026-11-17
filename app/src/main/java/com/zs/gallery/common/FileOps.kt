@@ -58,7 +58,13 @@ object FileOps {
     // Dialogs (plain platform dialogs; they follow the system light/dark theme)
     // ---------------------------------------------------------------------------------------------
 
-    private val dialogTheme = android.R.style.Theme_DeviceDefault_Dialog_Alert
+    /** Set by the UI from the app's own light/dark setting (which can differ from the system's). */
+    @Volatile
+    var darkTheme: Boolean = false
+
+    private val dialogTheme: Int
+        get() = if (darkTheme) android.R.style.Theme_DeviceDefault_Dialog_Alert
+        else android.R.style.Theme_DeviceDefault_Light_Dialog_Alert
 
     /** Lets the user pick a destination: existing folders + "New folder…". Null if cancelled. */
     suspend fun pickFolder(activity: Activity, title: String, folders: List<String>): String? {
@@ -85,7 +91,10 @@ object FileOps {
     /** A one-line text prompt; null if cancelled. */
     suspend fun askText(activity: Activity, title: String, initial: String, hint: String? = null): String? =
         suspendCancellableCoroutine { cont ->
-            val input = EditText(activity).apply {
+            val builder = AlertDialog.Builder(activity, dialogTheme)
+            // Created from the dialog's themed context, so the text is white on dark and black on
+            // light (it used to inherit the activity's theme and stay black).
+            val input = EditText(builder.context).apply {
                 setText(initial)
                 setSelection(initial.length)
                 inputType = InputType.TYPE_CLASS_TEXT
@@ -93,11 +102,11 @@ object FileOps {
                 if (hint != null) this.hint = hint
             }
             val pad = (20 * activity.resources.displayMetrics.density).toInt()
-            val box = FrameLayout(activity).apply {
+            val box = FrameLayout(builder.context).apply {
                 setPadding(pad, pad / 2, pad, 0)
                 addView(input)
             }
-            val dialog = AlertDialog.Builder(activity, dialogTheme)
+            val dialog = builder
                 .setTitle(title)
                 .setView(box)
                 .setPositiveButton(android.R.string.ok) { _, _ ->
