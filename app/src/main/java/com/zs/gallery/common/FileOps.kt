@@ -251,6 +251,7 @@ object FileOps {
                 true
             }.getOrDefault(false)
         }
+        if (ok) com.zs.core.coil.EditedMedia.mark(activity, file.id)
         if (!ok) activity.toast("Couldn't rotate the photo")
         // Old (unrotated) pictures must not come back from the in-memory cache.
         else coil3.SingletonImageLoader.get(activity).memoryCache?.clear()

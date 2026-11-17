@@ -110,6 +110,10 @@ class ThumbnailFetcher(
                 return null
             }
 
+            // Rotated / overwritten by the app: the system thumbnail may be stale; decode the file.
+            if (mimeType.startsWith("image/") && EditedMedia.contains(options.context, data.toAndroidUri()))
+                return null
+
             // Create and return a ThumbnailFetcher instance
             return ThumbnailFetcher(data, options)
         }

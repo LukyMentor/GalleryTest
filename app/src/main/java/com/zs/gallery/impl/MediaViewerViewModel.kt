@@ -111,6 +111,12 @@ class MediaViewerViewModel(
     override var data: List<MediaFile> by mutableStateOf(emptyList())
     override var details: MediaFile? by mutableStateOf(null)
     val current inline get() = data.find { it.id == focused }
+
+    // Deleted from the viewer: drop it from the list at once (the next photo shows immediately).
+    override fun onRemoved(ids: LongArray) {
+        val gone = ids.toHashSet()
+        data = data.filterNot { it.id in gone }
+    }
     override val title: CharSequence by derivedStateOf {
         sdf.format(Date(current?.timelineDate ?: return@derivedStateOf ""))
     }

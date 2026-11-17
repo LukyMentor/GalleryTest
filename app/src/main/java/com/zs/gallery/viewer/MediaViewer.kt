@@ -840,7 +840,7 @@ internal class Deleter(private val scope: CoroutineScope) {
         val f = Fade(id)
         fading = f
         scope.launch {
-            val spec = tween<Float>(durationMillis = 220, easing = FastOutSlowInEasing)
+            val spec = tween<Float>(durationMillis = 180, easing = FastOutSlowInEasing)
             launch { f.scale.animateTo(0.88f, spec) }
             f.alpha.animateTo(0f, spec)
             // Was a system "move to trash?" dialog shown (the app gets paused)?
@@ -876,7 +876,7 @@ internal class Deleter(private val scope: CoroutineScope) {
             val a = Animatable(0f)
             appearing = a
             fading = null
-            a.animateTo(1f, tween(220))
+            a.animateTo(1f, tween(180))
             appearing = null
         }
     }

@@ -788,7 +788,10 @@ private suspend fun saveCrop(
         }.getOrDefault(false)
     }
     // The old picture of a replaced photo must not linger in the in-memory image cache.
-    if (ok && replace) SingletonImageLoader.get(activity).memoryCache?.clear()
+    if (ok && replace) {
+        com.zs.core.coil.EditedMedia.mark(activity, src.uri)
+        SingletonImageLoader.get(activity).memoryCache?.clear()
+    }
     return ok
 }
 
