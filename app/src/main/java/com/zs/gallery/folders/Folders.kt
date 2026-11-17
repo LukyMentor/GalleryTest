@@ -66,7 +66,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.zs.compose.foundation.fullLineSpan
-import androidx.compose.foundation.layout.plus
 import com.zs.compose.foundation.stickyHeader
 import com.zs.compose.theme.AppTheme
 import com.zs.compose.theme.Icon

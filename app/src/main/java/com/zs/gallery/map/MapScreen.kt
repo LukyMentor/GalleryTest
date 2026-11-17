@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -104,6 +105,33 @@ private val DarkTiles = XYTileSource(
     "© OpenStreetMap contributors © CARTO"
 )
 
+// Fallback: the standard OpenStreetMap tiles (used if CARTO can't be reached).
+private val OsmTiles = XYTileSource(
+    "OpenStreetMap", 0, 19, 256, ".png",
+    arrayOf("https://tile.openstreetmap.org/"),
+    "© OpenStreetMap contributors"
+)
+
+/** Identifies the app to the tile servers (generic user agents get blocked). */
+private const val USER_AGENT = "MGallery/1.0 (Android; com.lukymentor.gallery; personal photo map)"
+
+/**
+ * Tries to download one tile; returns null if it worked, otherwise a short reason
+ * ("HTTP 403", "UnknownHostException", ...). Used to pick a working server and to tell the user
+ * why the map is empty instead of silently showing nothing.
+ */
+private fun probe(url: String): String? = try {
+    val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+    connection.setRequestProperty("User-Agent", USER_AGENT)
+    connection.connectTimeout = 8000
+    connection.readTimeout = 8000
+    val code = connection.responseCode
+    connection.disconnect()
+    if (code in 200..299) null else "HTTP $code"
+} catch (e: Exception) {
+    e.javaClass.simpleName + (e.message?.let { ": $it" } ?: "")
+}
+
 @Composable
 fun MapScreen() {
     val context = LocalContext.current
@@ -130,17 +158,37 @@ fun MapScreen() {
     val accent = colors.accent.toArgb()
     val overlay = remember { PhotoClusterOverlay(context, accent) { selected = it } }
     var fitted by remember { mutableStateOf(false) }
+    // Which tile server works (checked once per visit): CARTO first, OpenStreetMap as fallback.
+    var useOsm by remember { mutableStateOf(false) }
+    var tileError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        val carto = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            probe("https://a.basemaps.cartocdn.com/rastertiles/voyager/2/2/1@2x.png")
+        }
+        if (carto == null) return@LaunchedEffect
+        val osm = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            probe("https://tile.openstreetmap.org/2/2/1.png")
+        }
+        if (osm == null) useOsm = true
+        else tileError = "Map can't load (CARTO: $carto · OSM: $osm)"
+    }
     val mapHolder = remember { arrayOfNulls<MapView>(1) }
 
     Box(Modifier.fillMaxSize()) {
         AndroidView(
-            modifier = Modifier.fillMaxSize(),
+            // Own render layer: tiles arrive in the background and invalidate the map view; with
+            // its own layer that redraw never depends on the blurred bars' recording.
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(),
             factory = { ctx ->
                 Configuration.getInstance().apply {
                     load(ctx, ctx.getSharedPreferences("osmdroid", android.content.Context.MODE_PRIVATE))
-                    userAgentValue = ctx.packageName
-                    osmdroidBasePath = File(ctx.cacheDir, "osmdroid")
-                    osmdroidTileCache = File(ctx.cacheDir, "osmdroid/tiles")
+                    userAgentValue = USER_AGENT
+                    val base = File(ctx.cacheDir, "osmdroid").apply { mkdirs() }
+                    val tiles = File(base, "tiles").apply { mkdirs() }
+                    osmdroidBasePath = base
+                    osmdroidTileCache = tiles
                 }
                 MapView(ctx).apply {
                     setMultiTouchControls(true)
@@ -164,7 +212,11 @@ fun MapScreen() {
                 // Only switch tiles when the theme actually changed: setTileSource() wipes the
                 // tile cache and pending downloads, and this runs on every recomposition (e.g. each
                 // time the photo scan publishes progress) - that's why the map stayed empty.
-                val tiles = if (dark) DarkTiles else LightTiles
+                val tiles = when {
+                    useOsm -> OsmTiles
+                    dark -> DarkTiles
+                    else -> LightTiles
+                }
                 if (map.tileProvider.tileSource !== tiles) map.setTileSource(tiles)
                 overlay.photos = photos
                 // First time we have photos: show all of them.
@@ -207,15 +259,17 @@ fun MapScreen() {
                 val (done, total) = progress
                 Label(
                     text = when {
+                        tileError != null -> tileError!!
                         !granted -> "Map"
                         scanning && total > 0 -> "Finding places… $done / $total"
                         else -> "${photos.size} photos with a location"
                     },
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 3
                 )
             }
             Label(
-                text = "© OpenStreetMap contributors © CARTO",
+                text = if (useOsm) "© OpenStreetMap contributors" else "© OpenStreetMap contributors © CARTO",
                 style = AppTheme.typography.label3.copy(fontSize = 10.sp),
                 color = if (dark) Color.White.copy(0.6f) else Color.Black.copy(0.6f),
                 modifier = Modifier.padding(start = 8.dp, top = 6.dp)

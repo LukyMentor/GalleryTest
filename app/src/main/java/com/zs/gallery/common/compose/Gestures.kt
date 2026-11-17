@@ -56,45 +56,46 @@ fun Modifier.blockVerticalDrag(): Modifier = pointerInput(Unit) {
 }
 
 /**
- * Aves/Google-Photos style "drag down to close" for the media viewer.
+ * Aves/Google-Photos style "drag down to close" for the media viewer — gesture detection only.
  *
- * The content follows the finger (the caller reads [offset] to translate/scale/fade); releasing
- * past a distance or with enough downward velocity calls [onDismiss], otherwise the content
- * springs back. Runs in the Main pass on the pager's parent, so horizontal paging and pinch-zoom
- * (handled by children) win whenever they claim the gesture first.
+ * This modifier never moves anything itself: it reports the finger movement through [onDrag] and
+ * the end of the drag through [onDragEnd]; the caller owns the offset and all its animations.
+ * (Having the gesture and the screen both animate the same offset is what could leave the photo
+ * stuck half-way.)
+ *
+ * Runs in the Main pass on the pager's parent, so horizontal paging and pinch-zoom (handled by
+ * children) win whenever they claim the gesture first.
  *
  * @param enabled evaluated at the start of every gesture (e.g. only when not zoomed in).
- * @param offset current vertical drag offset in px (0 = resting; negative = dragged up).
+ * @param onDragStart where the drag began (for scaling around the finger).
+ * @param onDrag vertical finger movement in px (positive = down).
+ * @param onDragEnd vertical velocity (px/s) and whether the finger was lifted (vs. cancelled).
  * @param sheetOpen whether a bottom sheet (e.g. properties) is currently pulled out; then every
- *   vertical drag moves the sheet instead of dismissing.
+ *   vertical drag moves the sheet instead.
  * @param onSheetDrag if set, an *upward* drag (or any drag while the sheet is open) is forwarded
  *   here as raw finger movement (px, negative = up) and the content itself does not move.
  * @param onSheetRelease called with the vertical velocity (px/s) when such a drag ends.
  */
 fun Modifier.dragToDismiss(
     enabled: () -> Boolean,
-    offset: MutableFloatState,
-    onDismiss: (velocityY: Float) -> Unit,
-    onDragStart: (position: Offset) -> Unit = {},
+    onDragStart: (position: Offset) -> Unit,
+    onDrag: (dy: Float) -> Unit,
+    onDragEnd: (velocityY: Float, released: Boolean) -> Unit,
     sheetOpen: () -> Boolean = { false },
     onSheetDrag: ((dy: Float) -> Unit)? = null,
     onSheetRelease: ((velocityY: Float) -> Unit)? = null,
 ): Modifier = pointerInput(onSheetDrag != null) {
-    coroutineScope {
-        // Settle animation; cancelled whenever a new gesture starts.
-        var settle: Job? = null
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false)
-            if (!enabled()) return@awaitEachGesture
-            // NB: a running spring-back is only interrupted once a new drag really starts; a
-            // tap used to cancel it and leave the photo stuck half-way down.
-            val tracker = VelocityTracker()
-            tracker.addPosition(down.uptimeMillis, down.position)
-            val slop = viewConfiguration.touchSlop
-            var total = Offset.Zero
-            var dragging = false
-            var sheet = false
-            var released = false
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        if (!enabled()) return@awaitEachGesture
+        val tracker = VelocityTracker()
+        tracker.addPosition(down.uptimeMillis, down.position)
+        val slop = viewConfiguration.touchSlop
+        var total = Offset.Zero
+        var dragging = false
+        var sheet = false
+        var released = false
+        try {
             while (true) {
                 val event = awaitPointerEvent()
                 // A second finger means pinch-zoom: give up and let the zoom handler work.
@@ -119,57 +120,31 @@ fun Modifier.dragToDismiss(
                         onSheetDrag != null && (sheetOpen() || total.y < 0) -> {
                             dragging = true
                             sheet = true
-                            // Include the movement that crossed the slop, so the sheet starts
-                            // exactly under the finger.
-                            onSheetDrag(total.y)
                             change.consume()
+                            onSheetDrag(total.y)
                             continue
                         }
                         total.y > 0 -> {
-                            settle?.cancel()
                             dragging = true
-                            // Scale around the finger, so the spot you grabbed stays under it.
+                            change.consume()
                             onDragStart(down.position)
+                            // Include the slop so the photo stays exactly under the finger.
+                            onDrag(total.y)
+                            continue
                         }
                         else -> break
                     }
                 }
                 change.consume()
-                if (sheet) onSheetDrag?.invoke(delta.y)
-                else offset.floatValue = (offset.floatValue + delta.y).coerceAtLeast(0f)
+                if (sheet) onSheetDrag?.invoke(delta.y) else onDrag(delta.y)
             }
-            if (!dragging) {
-                // Safety net: never leave the content displaced when no drag/animation owns it.
-                if (offset.floatValue != 0f && settle?.isActive != true) {
-                    val from = offset.floatValue
-                    settle = launch {
-                        animate(from, 0f, animationSpec = spring(stiffness = Spring.StiffnessMedium)) { v, _ ->
-                            offset.floatValue = v
-                        }
-                    }
-                }
-                return@awaitEachGesture
-            }
-            val velocity = tracker.calculateVelocity().y
-            if (sheet) {
-                // The photo never moved; just let the sheet snap open or closed.
-                onSheetRelease?.invoke(if (released) velocity else 0f)
-                return@awaitEachGesture
-            }
-            // Close on a downward flick, or when dragged far enough and not being pulled back up.
-            val far = offset.floatValue > size.height * 0.15f
-            val flick = velocity > 1000.dp.toPx()
-            val pullingBack = velocity < -300.dp.toPx()
-            if (released && (flick || (far && !pullingBack))) {
-                onDismiss(velocity.coerceAtLeast(0f))
-                return@awaitEachGesture
-            }
-            // Spring back to rest.
-            val start = offset.floatValue
-            settle = launch {
-                animate(start, 0f, animationSpec = spring(stiffness = Spring.StiffnessMedium)) { value, _ ->
-                    offset.floatValue = value
-                }
+        } finally {
+            // Always report the end of a drag, even if the gesture was cancelled, so the owner
+            // can settle the photo (or the sheet) - nothing is ever left half-way.
+            if (dragging) {
+                val velocity = if (released) tracker.calculateVelocity().y else 0f
+                if (sheet) onSheetRelease?.invoke(velocity)
+                else onDragEnd(velocity, released)
             }
         }
     }

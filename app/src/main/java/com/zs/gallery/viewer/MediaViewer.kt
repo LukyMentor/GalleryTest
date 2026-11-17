@@ -113,6 +113,12 @@ import me.saket.telephoto.zoomable.zoomable
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 import androidx.compose.runtime.SideEffect
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.runtime.Stable
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -150,6 +156,61 @@ private val ZoomableState.isZoomedOut get() = (zoomFraction ?: 0f) <= 0.0001f
 
 
 /**
+ * Owns the drag-to-close offset of the photo (px, 0 = resting) and every animation of it, so
+ * there is exactly one place that can move the photo: the finger feeds [dragBy], and [end]
+ * either springs it back or flies it out and closes the screen.
+ */
+@Stable
+private class DismissController(
+    private val scope: CoroutineScope,
+    private val density: Float,
+    private val close: () -> Unit,
+) {
+    private val anim = Animatable(0f)
+    /** Current offset in px; read it in draw/graphics-layer lambdas. */
+    val offset: Float get() = anim.value
+    /** True once a drag decided to close; disables the shared-element "fly back" animation. */
+    var dismissed by mutableStateOf(false)
+        private set
+    var screenHeight = 0f
+
+    fun dragBy(dy: Float) {
+        if (dismissed) return
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            anim.snapTo((anim.value + dy).coerceAtLeast(0f))
+        }
+    }
+
+    fun end(velocityY: Float, released: Boolean) {
+        if (dismissed) return
+        val height = if (screenHeight > 0f) screenHeight else 2000f
+        val flick = velocityY > 1000f * density
+        val far = anim.value > height * 0.15f
+        val pullingBack = velocityY < -300f * density
+        if (released && (flick || (far && !pullingBack))) {
+            dismissed = true
+            scope.launch {
+                // Keep moving the way it was flung, fading out with the background.
+                anim.animateTo(
+                    anim.value + height,
+                    tween(durationMillis = 220, easing = LinearOutSlowInEasing),
+                    initialVelocity = velocityY
+                )
+                close()
+                // If the screen is somehow still here, never leave the photo hanging.
+                delay(700)
+                anim.snapTo(0f)
+                dismissed = false
+            }
+        } else {
+            scope.launch {
+                anim.animateTo(0f, spring(stiffness = Spring.StiffnessMedium))
+            }
+        }
+    }
+}
+
+/**
  * Close gestures shared by the opening image and the carousel: swipe in from a screen edge
  * (= back) and drag down to close (photo follows the finger). [enabled] is checked when each
  * gesture starts, e.g. to ignore them while zoomed in.
@@ -157,9 +218,8 @@ private val ZoomableState.isZoomedOut get() = (zoomFraction ?: 0f) <= 0.0001f
 @Composable
 private fun Modifier.closeGestures(
     enabled: () -> Boolean,
-    dismissOffset: MutableFloatState,
+    dismiss: DismissController,
     onClose: () -> Unit,
-    onDragDismiss: (velocityY: Float) -> Unit,
     sheet: DetailsSheetState? = null,
 ): Modifier {
     // Point that was grabbed; scaling happens around it so it stays under the finger.
@@ -179,16 +239,16 @@ private fun Modifier.closeGestures(
         .edgeSwipeBack(enabled = enabled, edge = edgeZone, onBack = onClose)
         .dragToDismiss(
             enabled = enabled,
-            offset = dismissOffset,
-            onDismiss = onDragDismiss,
             onDragStart = { p -> pivot[2] = p.x; pivot[3] = p.y },
+            onDrag = { dy -> dismiss.dragBy(dy) },
+            onDragEnd = { velocity, released -> dismiss.end(velocity, released) },
             sheetOpen = { sheet?.isOpen == true },
             onSheetDrag = sheet?.let { s -> { dy: Float -> s.dragBy(dy) } },
             onSheetRelease = sheet?.let { s -> { v: Float -> s.settle(v) } }
         )
         .graphicsLayer {
             // Follow the finger 1:1 and shrink slightly around the grabbed point.
-            val offset = dismissOffset.floatValue
+            val offset = dismiss.offset
             if (offset == 0f) return@graphicsLayer
             val progress = (offset / size.height).coerceIn(0f, 1f)
             translationY = offset
@@ -207,11 +267,10 @@ private fun Modifier.closeGestures(
 private fun Carousel(
     viewState: MediaViewerViewState,
     onRequest: (event: Int) -> Unit,
-    dismissOffset: MutableFloatState,
+    dismissOffset: DismissController,
     sharedElementEnabled: Boolean,
     onReady: () -> Unit,
     sheet: DetailsSheetState,
-    onDragDismiss: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val data = viewState.data
@@ -255,9 +314,8 @@ private fun Carousel(
         pageSpacing = ContentPadding.normal,
         modifier = modifier.closeGestures(
             enabled = { focusedZoom?.isZoomedOut ?: true },
-            dismissOffset = dismissOffset,
+            dismiss = dismissOffset,
             onClose = { onRequest(EVENT_BACK_PRESS) },
-            onDragDismiss = onDragDismiss,
             sheet = sheet
         ),
         // Disable swipe when zoomed in
@@ -359,8 +417,15 @@ fun MediaViewer(viewState: MediaViewerViewState) {
     // Guards against closing twice (e.g. our edge swipe + the system back gesture together).
     var closing by remember { mutableStateOf(false) }
     // Vertical drag-to-dismiss offset in px, shared by the pager and the background fade.
-    val dismissOffset = remember { mutableFloatStateOf(0f) }
-    val isDragging by remember { derivedStateOf { dismissOffset.floatValue != 0f } }
+    // (Created further down, once onRequest exists; declared here for the derived state.)
+    val dismissScope = rememberCoroutineScope()
+    val density = LocalDensity.current.density
+    val closeRequest = remember { arrayOfNulls<() -> Unit>(1) }
+    val dismissOffset = remember {
+        DismissController(dismissScope, density) { closeRequest[0]?.invoke() }
+    }
+    dismissOffset.screenHeight = LocalWindowInfo.current.containerSize.height.toFloat()
+    val isDragging by remember { derivedStateOf { dismissOffset.offset != 0f } }
     // Swipe-up properties sheet (the photo stays still; the sheet follows the finger).
     val sheet = rememberDetailsSheetState()
     val sheetOpen by remember { derivedStateOf { sheet.isOpen } }
@@ -392,34 +457,12 @@ fun MediaViewer(viewState: MediaViewerViewState) {
             else -> error("Received unexpected event: $request")
         }
     }
-    //
-    // Closing by dragging: the photo keeps moving the way it was flung and fades out, then the
-    // screen closes. The shared-element "fly back to the grid" is skipped in that case, as it
-    // would first snap the photo back to full screen.
-    var dismissedByDrag by remember { mutableStateOf(false) }
-    val dismissScope = rememberCoroutineScope()
-    val screenHeight = LocalWindowInfo.current.containerSize.height.toFloat()
-    val dragDismiss: (Float) -> Unit = { velocity ->
-        if (!dismissedByDrag) {
-            dismissedByDrag = true
-            dismissScope.launch {
-                val start = dismissOffset.floatValue
-                animate(
-                    initialValue = start,
-                    targetValue = start + screenHeight,
-                    initialVelocity = velocity,
-                    animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing)
-                ) { value, _ -> dismissOffset.floatValue = value }
-                if (!closing) {
-                    closing = true
-                    navController.navigateUp()
-                }
-                // If for any reason the screen is still here, don't leave the photo hanging.
-                delay(600)
-                closing = false
-                dismissedByDrag = false
-                dismissOffset.floatValue = 0f
-            }
+    // Drag-to-close finishes by closing the screen like back does (but without the shared-element
+    // animation, see DismissController.dismissed).
+    closeRequest[0] = {
+        if (!closing) {
+            closing = true
+            navController.navigateUp()
         }
     }
     BackHandler { onRequest(EVENT_BACK_PRESS) }
@@ -436,7 +479,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
         // Black backdrop that fades out while the photo is dragged down (read in draw phase).
         containerColor = Color.Transparent,
         modifier = Modifier.drawBehind {
-            val progress = (dismissOffset.floatValue / (size.height * 0.4f)).coerceIn(0f, 1f)
+            val progress = (dismissOffset.offset / (size.height * 0.4f)).coerceIn(0f, 1f)
             drawRect(Color.Black.copy(alpha = 1f - progress))
         },
         // TopAppBar
@@ -489,7 +532,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                     viewState.focused,
                     modifier = Modifier
                         .graphicsLayer {
-                            alpha = 1f - (dismissOffset.floatValue / (size.height * 0.4f)).coerceIn(0f, 1f)
+                            alpha = 1f - (dismissOffset.offset / (size.height * 0.4f)).coerceIn(0f, 1f)
                         }
                         .thenIf(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             blur(100.dp)
@@ -541,11 +584,10 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                     modifier = modifier
                         .closeGestures(
                             enabled = { true },
-                            dismissOffset = dismissOffset,
-                            onClose = { onRequest(EVENT_BACK_PRESS) },
-                            onDragDismiss = dragDismiss
+                            dismiss = dismissOffset,
+                            onClose = { onRequest(EVENT_BACK_PRESS) }
                         )
-                        .thenIf(!carouselReady && !dismissedByDrag) {
+                        .thenIf(!carouselReady && !dismissOffset.dismissed) {
                             RouteFiles.sharedElement(viewState.focused)
                         },
                 )
@@ -555,10 +597,9 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                     viewState,
                     onRequest,
                     dismissOffset,
-                    sharedElementEnabled = carouselReady && !dismissedByDrag,
+                    sharedElementEnabled = carouselReady && !dismissOffset.dismissed,
                     onReady = { carouselReady = true },
                     sheet = sheet,
-                    onDragDismiss = dragDismiss,
                     modifier = modifier
                 )
             // Swipe-up properties sheet, on top of everything, anchored to the bottom.
