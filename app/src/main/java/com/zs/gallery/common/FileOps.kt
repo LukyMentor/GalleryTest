@@ -80,9 +80,18 @@ object FileOps {
             cont.invokeOnCancellation { dialog.dismiss() }
         } ?: return null
         if (picked > 0) return choices[picked - 1].second
-        // New folder: under Pictures/ unless the user types a full path like "DCIM/Trips".
+        return askNewFolder(activity)
+    }
+
+    /**
+     * Asks for a new folder name; returns its relative path ("Pictures/Trips/"), or null.
+     * Folders go under Pictures/ unless the user types a full path like "DCIM/Trips".
+     * (Android only shows a folder once it contains a photo or video.)
+     */
+    suspend fun askNewFolder(activity: Activity): String? {
         val name = askText(activity, "New folder", "", hint = "e.g. Trips or DCIM/Trips")
-            ?.trim()?.trim('/')?.takeIf { it.isNotEmpty() } ?: return null
+            ?.trim()?.trim('/')?.replace(Regex("[\\\\:*?\"<>|]"), "_")
+            ?.takeIf { it.isNotEmpty() } ?: return null
         val top = name.substringBefore('/')
         val allowed = setOf("DCIM", "Pictures", "Movies", "Download", "Documents")
         return (if (top in allowed) name else "Pictures/$name") + "/"

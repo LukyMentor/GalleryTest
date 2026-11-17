@@ -30,6 +30,13 @@ import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.ArrowDownward
 import com.zs.compose.theme.IconButton
 import com.zs.gallery.files.FilterChip
+import kotlinx.coroutines.launch
+import com.zs.gallery.files.RoutePickInto
+import com.zs.gallery.common.FileOps
+import com.zs.compose.foundation.findActivity
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material.icons.outlined.CreateNewFolder
 import com.zs.compose.theme.menu.DropDownMenuItem
 import com.zs.compose.theme.menu.DropDownMenu
 import androidx.compose.foundation.layout.size
@@ -139,6 +146,23 @@ fun Folders(viewState: FoldersViewState) {
                         imageVector = Icons.Outlined.FolderCopy,
                         null,
                         modifier = Modifier.minimumInteractiveComponentSize()
+                    )
+                },
+                // New folder: name it, then pick the photos to move/copy into it
+                // (Android only keeps folders that contain something).
+                actions = {
+                    val ctx = LocalContext.current
+                    val scope = rememberCoroutineScope()
+                    IconButton(
+                        icon = Icons.Outlined.CreateNewFolder,
+                        contentDescription = "New folder",
+                        onClick = {
+                            scope.launch {
+                                val activity = ctx.findActivity()
+                                val path = FileOps.askNewFolder(activity) ?: return@launch
+                                navController.navigate(RoutePickInto(path))
+                            }
+                        }
                     )
                 },
                 insets = WindowInsets.systemBars.only(WindowInsetsSides.Top)

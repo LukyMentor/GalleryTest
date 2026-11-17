@@ -38,6 +38,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.material.icons.outlined.CloseFullscreen
+import androidx.compose.material.icons.outlined.OpenInFull
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -166,12 +170,18 @@ fun MapScreen() {
             }
         }
 
-        // Photos of the tapped place.
+        // Photos of the tapped place: a strip, which can be maximised into a full grid.
+        var expanded by rememberSaveable { mutableStateOf(false) }
         val cluster = selected
+        androidx.activity.compose.BackHandler(enabled = expanded && cluster != null) { expanded = false }
         if (cluster != null)
             PlaceStrip(
                 cluster = cluster,
-                onDismiss = { selectedIds = null },
+                onExpand = { expanded = true },
+                onDismiss = {
+                    selectedIds = null
+                    expanded = false
+                },
                 onOpen = { photo ->
                     navController.navigate(RouteViewer(RouteFiles.SOURCE_TIMELINE, photo.id))
                 },
@@ -182,6 +192,94 @@ fun MapScreen() {
                     )
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             )
+        androidx.compose.animation.AnimatedVisibility(
+            visible = expanded && cluster != null,
+            enter = androidx.compose.animation.slideInVertically { it / 3 } +
+                    androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.slideOutVertically { it / 3 } +
+                    androidx.compose.animation.fadeOut(),
+        ) {
+            val shown = cluster ?: return@AnimatedVisibility
+            PlaceGrid(
+                cluster = shown,
+                onCollapse = { expanded = false },
+                onOpen = { photo ->
+                    navController.navigate(RouteViewer(RouteFiles.SOURCE_TIMELINE, photo.id))
+                }
+            )
+        }
+    }
+}
+
+/** Title for a place: "Near Hue, Vietnam · 12 photos" (place looked up offline). */
+@Composable
+private fun placeTitle(cluster: PhotoCluster): String {
+    val context = LocalContext.current
+    val count = cluster.photos.size
+    val place by produceState<String?>(null, cluster.photos.first().id, count) {
+        val lat = cluster.photos.map { it.latitude }.average()
+        val lon = cluster.photos.map { it.longitude }.average()
+        value = Places.describe(context, lat, lon)
+    }
+    val photosLabel = if (count == 1) "1 photo" else "$count photos"
+    return place?.let { "$it · $photosLabel" } ?: photosLabel
+}
+
+/** All photos of one place in a full-screen grid (like the Photos tab). */
+@Composable
+private fun PlaceGrid(
+    cluster: PhotoCluster,
+    onCollapse: () -> Unit,
+    onOpen: (GeoPhoto) -> Unit,
+) {
+    val colors = AppTheme.colors
+    val context = LocalContext.current
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(colors.background)
+            .windowInsetsPadding(WindowInsets.statusBars)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp)
+        ) {
+            Label(
+                text = placeTitle(cluster),
+                style = AppTheme.typography.title3,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(icon = Icons.Outlined.CloseFullscreen, contentDescription = "Back to map", onClick = onCollapse)
+        }
+        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+            columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(100.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            contentPadding = WindowInsets.content
+                .union(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))
+                .asPaddingValues(),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            items(cluster.photos.size, key = { cluster.photos[it].id }) { index ->
+                val photo = cluster.photos[index]
+                AsyncImage(
+                    model = remember(photo.id) {
+                        ImageRequest.Builder(context)
+                            .data(ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, photo.id))
+                            .memoryCacheKey(thumbnailCacheKey(photo.id))
+                            .build()
+                    },
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .aspectRatio(1f)
+                        .background(colors.background(4.dp))
+                        .clickable { onOpen(photo) }
+                )
+            }
+        }
     }
 }
 
@@ -191,6 +289,7 @@ private fun PlaceStrip(
     cluster: PhotoCluster,
     onDismiss: () -> Unit,
     onOpen: (GeoPhoto) -> Unit,
+    onExpand: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = AppTheme.colors
@@ -203,23 +302,19 @@ private fun PlaceStrip(
             .background(colors.background(2.dp), shape)
             .padding(vertical = 8.dp)
     ) {
+        // Header: tap it (or the expand button) to see all photos of the place in a big grid.
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = 16.dp, end = 4.dp)
+            modifier = Modifier
+                .clickable(onClick = onExpand)
+                .padding(start = 16.dp, end = 4.dp)
         ) {
-            val count = cluster.photos.size
-            // Where this is (offline: nearest bundled city to the photos' average position).
-            val place by produceState<String?>(null, cluster.photos.first().id, count) {
-                val lat = cluster.photos.map { it.latitude }.average()
-                val lon = cluster.photos.map { it.longitude }.average()
-                value = Places.describe(context, lat, lon)
-            }
-            val photosLabel = if (count == 1) "1 photo" else "$count photos"
             Label(
-                text = place?.let { "$it · $photosLabel" } ?: photosLabel,
+                text = placeTitle(cluster),
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
             )
+            IconButton(icon = Icons.Outlined.OpenInFull, contentDescription = "Show all", onClick = onExpand)
             IconButton(icon = Icons.Outlined.Close, contentDescription = "Close", onClick = onDismiss)
         }
         LazyRow(

@@ -59,6 +59,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import com.zs.core.store.sortedForTimeline
 import com.zs.gallery.files.MediaFilter
+import com.zs.gallery.files.RouteFiles.SOURCE_PICK
 import com.zs.gallery.files.MediaOrder
 import androidx.compose.runtime.snapshotFlow
 import com.zs.core.store.MediaProvider
@@ -105,6 +106,8 @@ private val SETTINGS = Action.SETTINGS
 private val MOVE = Action(R.string.move_to, Icons.Outlined.DriveFileMove)
 private val COPY = Action(R.string.copy_to, Icons.Outlined.ContentCopy)
 private val RENAME = Action(R.string.rename, Icons.Outlined.DriveFileRenameOutline)
+private val MOVE_HERE = Action(R.string.move_here, Icons.Outlined.DriveFileMove)
+private val COPY_HERE = Action(R.string.copy_here, Icons.Outlined.ContentCopy)
 
 @SuppressLint("NewApi")
 class FilesViewModel(
@@ -121,6 +124,8 @@ class FilesViewModel(
             SOURCE_BIN -> Icons.Outlined.Recycling to getText(R.string.recycle_bin)
             SOURCE_FAV -> Icons.Outlined.FavoriteBorder to getText(R.string.favourites)
             SOURCE_TIMELINE -> null to getText(R.string.timeline)
+            SOURCE_PICK -> Icons.Outlined.DriveFileMove to
+                    "Add to ${arg.orEmpty().trimEnd('/').substringAfterLast('/')}"
             else -> Icons.TwoTone.FolderCopy to buildAnnotatedString {
                 append(PathUtils.name(arg!!).ellipsize(10))
                 withStyle(ParagraphStyle(lineHeight = 12.sp)) {
@@ -134,6 +139,7 @@ class FilesViewModel(
     override var data: Mapped<MediaFile>? by mutableStateOf(null)
 
     override val supportsFilters: Boolean = source != SOURCE_BIN
+    override val pickMode: Boolean = source == SOURCE_PICK
     override var filter: MediaFilter by mutableStateOf(MediaFilter.ALL)
     override var order: MediaOrder by mutableStateOf(MediaOrder.NEWEST)
     override var groupedBySize: Boolean by mutableStateOf(false)
@@ -259,6 +265,13 @@ class FilesViewModel(
     @Suppress("BuildListAdds")
     override val actions: List<Action> by derivedStateOf {
         buildList {
+            // Picking photos for a new folder: only "move here" / "copy here".
+            if (source == SOURCE_PICK) {
+                if (isInSelectionMode) {
+                    this += MOVE_HERE; this += COPY_HERE
+                }
+                return@buildList
+            }
             // Add "Select All" action if not in timeline and not all items are selected
             if (source != SOURCE_TIMELINE && !allSelected)
                 this += SELECT_ALL
@@ -346,6 +359,17 @@ class FilesViewModel(
                         error(getText(R.string.msg_files_quick_share_error))
                 }
 
+                MOVE_HERE, COPY_HERE -> {
+                    val target = arg ?: return@launch
+                    val wanted = focused.toHashSet()
+                    val files = data?.values?.flatten()?.filter { it.id in wanted }.orEmpty()
+                    if (files.isEmpty()) return@launch
+                    val done = if (value == MOVE_HERE) FileOps.move(resolver, files, target)
+                    else FileOps.copy(resolver, files, target)
+                    // Back to Folders, where the new folder now shows up.
+                    if (done > 0) (resolver as? androidx.activity.ComponentActivity)
+                        ?.onBackPressedDispatcher?.onBackPressed()
+                }
                 MOVE, COPY, RENAME -> {
                     val wanted = focused.toHashSet()
                     val files = data?.values?.flatten()?.filter { it.id in wanted }.orEmpty()
@@ -419,6 +443,8 @@ class FilesViewModel(
     }
 
     init {
+        if (source == SOURCE_PICK)
+            showPlatformToast("Tap photos to select them, then Move here or Copy here")
         provider.observer(MediaProvider.EXTERNAL_CONTENT_URI)
             .debounceAfterFirst(300)
             .let { stream ->

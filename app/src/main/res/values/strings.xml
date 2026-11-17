@@ -68,6 +68,8 @@
     <string name="move_to">Move to…</string>
     <string name="copy_to">Copy to…</string>
     <string name="rename">Rename</string>
+    <string name="move_here">Move here</string>
+    <string name="copy_here">Copy here</string>
     <string name="info">Info</string>
     <string name="edit_in">Edit In</string>
     <string name="use_as">Use as</string>

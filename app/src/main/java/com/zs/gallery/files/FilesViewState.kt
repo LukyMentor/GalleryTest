@@ -38,6 +38,9 @@ fun RouteFolder(path: String) = RouteFiles(RouteFiles.SOURCE_FOLDER, path)
 fun RouteLiked() = RouteFiles(RouteFiles.SOURCE_FAV)
 fun RouteBin() = RouteFiles(RouteFiles.SOURCE_BIN)
 
+/** All photos, to pick some and move/copy them into the new folder [relativePath]. */
+fun RoutePickInto(relativePath: String) = RouteFiles(RouteFiles.SOURCE_PICK, relativePath)
+
 private const val PARAM_ARG = "param_path"
 private const val PARAM_SOURCE = "param_source"
 
@@ -47,6 +50,7 @@ object RouteFiles : Route {
     const val SOURCE_FAV = "source_fav"
     const val SOURCE_TIMELINE = "source_timeline"
     const val SOURCE_FOLDER = "source_folder"
+    const val SOURCE_PICK = "source_pick"
 
     override val route: String = "$domain/{$PARAM_SOURCE}/{$PARAM_ARG}"
 
@@ -90,6 +94,9 @@ enum class MediaFilter { ALL, PHOTOS, VIDEOS, SCREENSHOTS }
 enum class MediaOrder { NEWEST, OLDEST, LARGEST }
 
 interface FilesViewState : SelectionTracker {
+
+    /** Picking photos for a new folder: a tap selects instead of opening the photo. */
+    val pickMode: Boolean get() = false
 
     /** Whether this screen offers the filter/sort bar (not in the recycle bin). */
     val supportsFilters: Boolean

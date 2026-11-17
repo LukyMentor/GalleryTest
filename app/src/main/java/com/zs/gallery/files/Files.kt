@@ -282,7 +282,7 @@ fun Files(viewState: FilesViewState) {
                             // to extend), so tiles only handle plain taps.
                             val clickable = Modifier.clickable(
                                 onClick = {
-                                    if (viewState.isInSelectionMode)
+                                    if (viewState.isInSelectionMode || viewState.pickMode)
                                         viewState.select(item.id)
                                     else
                                         navController.navigate(viewState.direction(item.id))
