@@ -455,11 +455,22 @@ private fun NavigationBar(
         // Get the current navigation destination from NavController
         val current by navController.currentBackStackEntryAsState()
         val onAccentBar = contentColor == colors.onAccent
+        // Dark mode: lavender (a light Very Peri) instead of plain white for icons and labels.
+        val dark = !colors.isLight
+        val lavender = androidx.compose.ui.graphics.lerp(colors.accent, Color.White, 0.5f)
         val navColors = NavColors(
             indicator = if (onAccentBar) contentColor.copy(ContentAlpha.indication) else colors.accent,
             selectedIcon = if (onAccentBar) contentColor else colors.onAccent,
-            selectedText = if (onAccentBar) contentColor else colors.accent,
-            unselected = if (onAccentBar) colors.onAccent else colors.onBackground,
+            selectedText = when {
+                onAccentBar -> contentColor
+                dark -> lavender
+                else -> colors.accent
+            },
+            unselected = when {
+                onAccentBar -> colors.onAccent
+                dark -> lavender.copy(alpha = 0.85f)
+                else -> colors.onBackground
+            },
         )
         // The tab comes from the screen above, which already knows it on the very first frame.
         // (Reading the back stack here starts as "nothing selected" whenever the bar reappears,
@@ -600,7 +611,7 @@ fun Home(
                         // (there the light background already carries the purple).
                         !colors.isLight -> colors.background(
                             surface,
-                            containerColor = colors.accent.copy(alpha = 0.30f)
+                            containerColor = colors.accent.copy(alpha = 0.40f)
                                 .compositeOver(Color(0xFF16161D))
                         )
                         else -> colors.background(surface)

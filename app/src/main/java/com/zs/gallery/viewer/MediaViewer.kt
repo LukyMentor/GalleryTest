@@ -453,6 +453,14 @@ fun MediaViewer(viewState: MediaViewerViewState) {
     //
     val facade = LocalSystemFacade.current
     val navController = LocalNavController.current
+    // System-bar style before the viewer changed it. Restored *as the viewer starts closing*
+    // (not after its exit animation), so the status bar (e.g. coming back from full-screen) is
+    // already in place when the grid appears - no layout jump afterwards.
+    val originalStyle = remember { arrayOfNulls<WindowStyle>(1) }
+    val restoreStyle = {
+        originalStyle[0]?.let { facade.style = it }
+        immersive = false
+    }
     val onRequest: (Int) -> Unit = { request: Int ->
         when (request) {
             // Toggle the visibility of detailed information.
@@ -469,6 +477,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
             // the original system-bar style is restored when the screen is disposed.
             EVENT_BACK_PRESS -> if (!closing) {
                 closing = true
+                restoreStyle()
                 navController.navigateUp()
             }
             // This must not happen.
@@ -480,6 +489,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
     closeRequest[0] = {
         if (!closing) {
             closing = true
+            restoreStyle()
             navController.navigateUp()
         }
     }
@@ -639,6 +649,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
     DisposableEffect(key1 = Unit) {
         //facade.enableEdgeToEdge(dark = false, translucent = false)
         val original = facade.style
+        originalStyle[0] = original
         facade.style =
             original + WindowStyle.FLAG_SYSTEM_BARS_APPEARANCE_DARK + WindowStyle.FLAG_SYSTEM_BARS_BG_TRANSPARENT
         onDispose {

@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -86,12 +87,17 @@ fun MediaFile(
             AppTheme.motionScheme.fastSpatialSpec()
         )
         val ctx = LocalContext.current
+        val thumbPx = with(LocalDensity.current) { THUMB_SIZE.roundToPx() }
         AsyncImage(
             model = remember(key1 = value.id) {
                 ImageRequest.Builder(ctx).apply {
                     data(value.mediaUri)
                     // Stable key: the viewer reuses this thumbnail as its instant placeholder.
                     memoryCacheKey(thumbnailCacheKey(value.id))
+                    // A fixed size lets Coil serve a cached thumbnail *synchronously* on the first
+                    // frame (e.g. coming back from a photo) instead of after a layout pass.
+                    size(thumbPx, thumbPx)
+                    precision(coil3.size.Precision.INEXACT)
                 }.build()
             },
             contentDescription = value.name,
@@ -165,3 +171,6 @@ fun MediaFile(
 
 /** Memory-cache key of the grid thumbnail for media [id]; shared with the viewer. */
 fun thumbnailCacheKey(id: Long) = "thumb_$id"
+
+/** Size thumbnails are decoded at (covers the largest grid tile setting). */
+private val THUMB_SIZE = 160.dp
