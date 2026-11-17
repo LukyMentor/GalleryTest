@@ -177,7 +177,7 @@ class MediaViewerViewModel(
                 RENAME -> FileOps.rename(resolver, current ?: return@launch)
                 MOVE, COPY -> {
                     val file = current ?: return@launch
-                    val folders = provider.fetchFolders().map { it.path }
+                    val folders = provider.fetchFolders()
                     val target = FileOps.pickFolder(
                         resolver, if (value == MOVE) "Move to" else "Copy to", folders
                     ) ?: return@launch

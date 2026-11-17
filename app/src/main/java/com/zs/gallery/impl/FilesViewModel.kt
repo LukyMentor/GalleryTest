@@ -396,7 +396,7 @@ class FilesViewModel(
                     when (value) {
                         RENAME -> FileOps.rename(resolver, files.first())
                         else -> {
-                            val folders = provider.fetchFolders().map { it.path }
+                            val folders = provider.fetchFolders()
                             val title = if (value == MOVE) "Move to" else "Copy to"
                             val target = FileOps.pickFolder(resolver, title, folders) ?: return@launch
                             if (value == MOVE) FileOps.move(resolver, files, target)

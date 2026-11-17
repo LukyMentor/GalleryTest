@@ -116,7 +116,9 @@ fun MediaFile(
                         val scale = lerp(start = 1f, 0.8f, progress)
                         scaleX = scale
                         scaleY = scale
-                        shape = RoundedCornerShape(lerp(0, 16, progress))
+                        // The springy animation overshoots below 0 / above 1; a corner of -1 %
+                        // crashed the app while selecting (crash log of 17 Nov).
+                        shape = RoundedCornerShape(lerp(0, 16, progress.coerceIn(0f, 1f)))
                         clip = true
                     }
                 }

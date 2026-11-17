@@ -74,8 +74,7 @@ abstract class StoreViewModel(val provider: MediaProvider): KoinViewModel(){
 
             // Update the favorite items in preferences.
             preferences[Settings.KEY_FAVOURITE_FILES] = favourites
-            // Display a message to the user.
-            showPlatformToast(R.string.msg_favourites_updated)
+            // No "favourites updated" toast: the star itself shows the change.
         }
     }
 

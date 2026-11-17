@@ -67,19 +67,12 @@ object FileOps {
         else android.R.style.Theme_DeviceDefault_Light_Dialog_Alert
 
     /** Lets the user pick a destination: existing folders + "New folder…". Null if cancelled. */
-    suspend fun pickFolder(activity: Activity, title: String, folders: List<String>): String? {
-        val choices = folders.mapNotNull { f -> relativePathOf(f)?.let { f to it } }
-            .sortedBy { it.second.lowercase() }
-        val labels = (listOf("+  New folder…") + choices.map { it.second.trimEnd('/') }).toTypedArray()
-        val picked = suspendCancellableCoroutine<Int?> { cont ->
-            val dialog = AlertDialog.Builder(activity, dialogTheme)
-                .setTitle(title)
-                .setItems(labels) { _, which -> if (cont.isActive) cont.resume(which) }
-                .setOnCancelListener { if (cont.isActive) cont.resume(null) }
-                .show()
-            cont.invokeOnCancellation { dialog.dismiss() }
-        } ?: return null
-        if (picked > 0) return choices[picked - 1].second
+    suspend fun pickFolder(activity: Activity, title: String, folders: List<com.zs.core.store.Folder>): String? {
+        // Most recently used folders first (usually where things go).
+        val choices = folders.mapNotNull { f -> relativePathOf(f.path)?.let { f to it } }
+            .sortedByDescending { it.first.lastModified }
+        val picked = FolderPicker.pick(title, choices) ?: return null
+        if (picked != FolderPicker.NEW_FOLDER) return picked
         return askNewFolder(activity)
     }
 

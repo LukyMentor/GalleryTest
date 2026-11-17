@@ -39,6 +39,18 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Crop
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.material.icons.outlined.BorderColor
+import androidx.compose.material.icons.outlined.Gesture
+import androidx.compose.material.icons.outlined.NorthEast
+import androidx.compose.material.icons.automirrored.outlined.Undo
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -194,6 +206,11 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
     var crop by rememberSaveable(stateSaver = RectSaver) { mutableStateOf(Rect(0f, 0f, 1f, 1f)) }
     var ratio by rememberSaveable { mutableFloatStateOf(0f) }
     var dragging by remember { mutableStateOf(false) }
+    // Drawing: marks in 0..1 of the photo, so they land in the same place on the full image.
+    var drawMode by rememberSaveable { mutableStateOf(false) }
+    val marks = remember { mutableStateListOf<Mark>() }
+    var tool by rememberSaveable { mutableStateOf(Tool.ARROW) }
+    var colorIndex by rememberSaveable { mutableIntStateOf(0) }
     var saving by remember { mutableStateOf(false) }
     var area by remember { mutableStateOf(IntSize.Zero) }
     // Room around the photo, so the handles at its edges are easy to grab.
@@ -233,14 +250,14 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
         saving = true
         scope.launch {
             val activity = context.findActivity()
-            val ok = saveCrop(activity, src, crop, replace)
+            val ok = saveCrop(activity, src, crop, replace, marks.map { it.frozen() })
             saving = false
             Toast.makeText(
                 context,
                 when {
-                    !ok -> "Couldn't save the crop"
-                    replace -> "Cropped"
-                    else -> "Saved a cropped copy"
+                    !ok -> "Couldn't save the photo"
+                    replace -> "Saved"
+                    else -> "Saved a copy"
                 },
                 Toast.LENGTH_SHORT
             ).show()
@@ -263,13 +280,29 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
                 onClick = { leave() },
                 tint = Color.White
             )
-            Label("Crop", color = Color.White, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            IconButton(
-                icon = Icons.Outlined.RestartAlt,
-                contentDescription = "Reset",
-                onClick = { ratio = 0f; crop = Rect(0f, 0f, 1f, 1f) },
-                tint = Color.White
-            )
+            // Crop | Draw
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                modifier = Modifier.weight(1f)
+            ) {
+                Pill("Crop", selected = !drawMode) { drawMode = false }
+                Pill("Draw", selected = drawMode) { drawMode = true }
+            }
+            if (drawMode)
+                IconButton(
+                    icon = Icons.AutoMirrored.Outlined.Undo,
+                    contentDescription = "Undo",
+                    enabled = marks.isNotEmpty(),
+                    onClick = { if (marks.isNotEmpty()) marks.removeAt(marks.lastIndex) },
+                    tint = if (marks.isNotEmpty()) Color.White else Color.White.copy(alpha = 0.35f)
+                )
+            else
+                IconButton(
+                    icon = Icons.Outlined.RestartAlt,
+                    contentDescription = "Reset",
+                    onClick = { ratio = 0f; crop = Rect(0f, 0f, 1f, 1f) },
+                    tint = Color.White
+                )
         }
         // The photo and the frame.
         val touch = with(density) { 28.dp.toPx() }
@@ -279,8 +312,47 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
                 .weight(1f)
                 .fillMaxWidth()
                 .onSizeChanged { area = it }
-                .pointerInput(imageRect, ratio) {
+                .pointerInput(imageRect, ratio, drawMode, tool, colorIndex) {
                     if (imageRect.isEmpty) return@pointerInput
+                    if (drawMode) {
+                        // Draw: one finger paints the chosen tool.
+                        val widthPx = when (tool) {
+                            Tool.PEN -> 4.dp.toPx()
+                            Tool.HIGHLIGHTER -> 22.dp.toPx()
+                            Tool.ARROW -> 5.dp.toPx()
+                        }
+                        fun norm(p: Offset) = Offset(
+                            ((p.x - imageRect.left) / imageRect.width).coerceIn(0f, 1f),
+                            ((p.y - imageRect.top) / imageRect.height).coerceIn(0f, 1f)
+                        )
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            val start = norm(down.position)
+                            val points = mutableStateListOf(start, start)
+                            val mark = Mark(tool, Palette[colorIndex], widthPx / imageRect.width, points)
+                            marks += mark
+                            var last = down.position
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                change.consume()
+                                val p = change.position
+                                if (tool == Tool.ARROW) points[1] = norm(p)
+                                else if ((p - last).getDistance() > 1.5f) {
+                                    points += norm(p)
+                                    last = p
+                                }
+                            }
+                            // A tap with the arrow tool isn't an arrow.
+                            if (tool == Tool.ARROW &&
+                                (points[1] - points[0]).let { Offset(it.x * imageRect.width, it.y * imageRect.height) }
+                                    .getDistance() < 12.dp.toPx()
+                            ) marks.remove(mark)
+                        }
+                        return@pointerInput
+                    }
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val p = down.position
@@ -318,6 +390,16 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
                         dstSize = IntSize(imageRect.width.toInt(), imageRect.height.toInt()),
                         filterQuality = FilterQuality.High
                     )
+                    // Drawings, clipped to the photo.
+                    if (marks.isNotEmpty())
+                        drawIntoCanvas { canvas ->
+                            val native = canvas.nativeCanvas
+                            native.save()
+                            native.clipRect(imageRect.left, imageRect.top, imageRect.right, imageRect.bottom)
+                            for (m in marks)
+                                drawMark(native, m, imageRect.left, imageRect.top, imageRect.width, imageRect.height)
+                            native.restore()
+                        }
                     val r = crop.toScreen(imageRect)
                     // Dim everything outside the frame.
                     val shade = Color.Black.copy(alpha = 0.62f)
@@ -335,8 +417,9 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
                             drawLine(guide, Offset(r.left, y), Offset(r.right, y), 1.dp.toPx())
                         }
                     }
-                    // Frame + corner and edge handles.
+                    // Frame + corner and edge handles (just the frame while drawing).
                     drawRect(Color.White, r.topLeft, r.size, style = Stroke(1.5.dp.toPx()))
+                    if (drawMode) return@Canvas
                     val t = 3.dp.toPx()
                     val len = min(22.dp.toPx(), min(r.width, r.height) / 2f)
                     val c = Color.White
@@ -364,8 +447,18 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 4.dp)
         ) {
-            for ((label, value) in Ratios)
-                Pill(label, selected = ratio == value, onClick = { applyRatio(value) })
+            if (!drawMode)
+                for ((label, value) in Ratios)
+                    Pill(label, selected = ratio == value, onClick = { applyRatio(value) })
+            else {
+                ToolButton(Icons.Outlined.NorthEast, "Arrow", tool == Tool.ARROW) { tool = Tool.ARROW }
+                ToolButton(Icons.Outlined.Gesture, "Pen", tool == Tool.PEN) { tool = Tool.PEN }
+                ToolButton(Icons.Outlined.BorderColor, "Highlighter", tool == Tool.HIGHLIGHTER) { tool = Tool.HIGHLIGHTER }
+                Spacer(Modifier.size(width = 6.dp, height = 1.dp))
+                Palette.forEachIndexed { i, c ->
+                    Swatch(c, selected = i == colorIndex) { colorIndex = i }
+                }
+            }
         }
         Spacer(Modifier.height(8.dp))
         // Save.
@@ -387,6 +480,108 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
 }
 
 private data class Quad(val a: Float, val b: Float, val c: Float, val d: Float)
+
+internal enum class Tool { PEN, HIGHLIGHTER, ARROW }
+
+/** Red, yellow, green, blue, purple, white, black. */
+private val Palette = listOf(
+    Color(0xFFFF3B30), Color(0xFFFFCC00), Color(0xFF34C759), Color(0xFF0A84FF),
+    Color(0xFF8E8FD1), Color.White, Color.Black,
+)
+
+/** One drawing: points in 0..1 of the photo, width as a fraction of the photo's width. */
+internal class Mark(val tool: Tool, val color: Color, val width: Float, val points: List<Offset>) {
+    fun frozen() = Mark(tool, color, width, points.toList())
+}
+
+/** Draws [m] onto a photo occupying (left, top, w x h) of [c]. Same code for screen and file. */
+private fun drawMark(c: android.graphics.Canvas, m: Mark, left: Float, top: Float, w: Float, h: Float) {
+    val pts = m.points
+    if (pts.isEmpty()) return
+    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        style = android.graphics.Paint.Style.STROKE
+        strokeWidth = max(1f, m.width * w)
+        strokeJoin = android.graphics.Paint.Join.ROUND
+        strokeCap = if (m.tool == Tool.HIGHLIGHTER) android.graphics.Paint.Cap.SQUARE else android.graphics.Paint.Cap.ROUND
+        color = (if (m.tool == Tool.HIGHLIGHTER) m.color.copy(alpha = 0.4f) else m.color).toArgb()
+    }
+    fun x(o: Offset) = left + o.x * w
+    fun y(o: Offset) = top + o.y * h
+    if (m.tool == Tool.ARROW) {
+        val ax = x(pts.first()); val ay = y(pts.first())
+        val bx = x(pts.last()); val by = y(pts.last())
+        val angle = kotlin.math.atan2(by - ay, bx - ax)
+        val len = kotlin.math.hypot(bx - ax, by - ay)
+        val head = min(paint.strokeWidth * 4.2f, len * 0.6f)
+        val spread = 0.48f
+        // Shaft stops at the head's base, so the tip stays sharp.
+        val baseX = bx - kotlin.math.cos(angle) * head * 0.8f
+        val baseY = by - kotlin.math.sin(angle) * head * 0.8f
+        c.drawLine(ax, ay, baseX, baseY, paint)
+        val tri = android.graphics.Path().apply {
+            moveTo(bx, by)
+            lineTo(bx - kotlin.math.cos(angle - spread) * head, by - kotlin.math.sin(angle - spread) * head)
+            lineTo(bx - kotlin.math.cos(angle + spread) * head, by - kotlin.math.sin(angle + spread) * head)
+            close()
+        }
+        paint.style = android.graphics.Paint.Style.FILL_AND_STROKE
+        paint.strokeWidth = paint.strokeWidth * 0.5f
+        c.drawPath(tri, paint)
+        return
+    }
+    // Pen / highlighter: smoothed through the midpoints.
+    val distinct = pts.size < 3 && pts.first() == pts.last()
+    if (distinct) {
+        c.drawPoint(x(pts.first()), y(pts.first()), paint.apply { strokeCap = android.graphics.Paint.Cap.ROUND })
+        return
+    }
+    val path = android.graphics.Path()
+    path.moveTo(x(pts[0]), y(pts[0]))
+    for (i in 1 until pts.size) {
+        val p = pts[i - 1]; val q = pts[i]
+        path.quadTo(x(p), y(p), (x(p) + x(q)) / 2f, (y(p) + y(q)) / 2f)
+    }
+    path.lineTo(x(pts.last()), y(pts.last()))
+    c.drawPath(path, paint)
+}
+
+@Composable
+private fun ToolButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+    val accent = AppTheme.colors.accent
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .background(if (selected) accent else Color.White.copy(alpha = 0.12f))
+            .clickable(onClick = onClick)
+    ) {
+        com.zs.compose.theme.Icon(
+            icon, contentDescription = label,
+            tint = if (selected) AppTheme.colors.onAccent else Color.White,
+            modifier = Modifier.size(22.dp)
+        )
+    }
+}
+
+@Composable
+private fun Swatch(color: Color, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            Modifier
+                .size(if (selected) 34.dp else 28.dp)
+                .border(if (selected) 3.dp else 1.dp, Color.White.copy(alpha = if (selected) 1f else 0.5f), CircleShape)
+                .padding(if (selected) 5.dp else 2.dp)
+                .background(color, CircleShape)
+        )
+    }
+}
 
 @Composable
 private fun Pill(
@@ -498,13 +693,20 @@ private fun resize(s: Rect, handle: Int, d: Offset, rn: Float, minW: Float, minH
 }
 
 /** Writes the cropped photo: as a copy next to the original, or over the original. */
-private suspend fun saveCrop(activity: Activity, src: CropSource, crop: Rect, replace: Boolean): Boolean {
+private suspend fun saveCrop(
+    activity: Activity, src: CropSource, crop: Rect, replace: Boolean, marks: List<Mark>,
+): Boolean {
     if (replace && !requestWrite(activity, src.uri)) return false
     val resolver = activity.contentResolver
     val ok = withContext(Dispatchers.IO) {
         runCatching {
             // Full quality (only huge photos are scaled, to stay within memory).
-            val full = decode(activity, src.uri, 8000, software = true)
+            var full = decode(activity, src.uri, 8000, software = true)
+            if (marks.isNotEmpty()) {
+                if (!full.isMutable) full = full.copy(Bitmap.Config.ARGB_8888, true)
+                val canvas = android.graphics.Canvas(full)
+                for (m in marks) drawMark(canvas, m, 0f, 0f, full.width.toFloat(), full.height.toFloat())
+            }
             val l = (crop.left * full.width).toInt().coerceIn(0, full.width - 1)
             val t = (crop.top * full.height).toInt().coerceIn(0, full.height - 1)
             val w = ((crop.right * full.width).toInt() - l).coerceIn(1, full.width - l)
@@ -531,7 +733,7 @@ private suspend fun saveCrop(activity: Activity, src: CropSource, crop: Rect, re
                 val base = if (dot > 0) src.name.substring(0, dot) else src.name
                 val ext = when (mime) { "image/png" -> "png"; "image/webp" -> "webp"; else -> "jpg" }
                 val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, "${base}_crop.$ext")
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, "${base}_edit.$ext")
                     put(MediaStore.MediaColumns.MIME_TYPE, mime)
                     put(MediaStore.MediaColumns.RELATIVE_PATH, src.relativePath ?: "Pictures/")
                     put(MediaStore.MediaColumns.DATE_TAKEN, System.currentTimeMillis())

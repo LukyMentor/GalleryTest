@@ -148,6 +148,7 @@ import com.zs.gallery.common.compose.shine
 import com.zs.gallery.common.compose.source
 import com.zs.gallery.common.domain
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.foundation.layout.fillMaxSize
 import com.zs.gallery.common.shapes.EndConcaveShape
 import com.zs.gallery.files.Files
 import com.zs.gallery.files.RouteFiles
@@ -746,7 +747,13 @@ fun Home(
                     portrait -> clazz.consume(56.dp)
                     else -> clazz.consume(SIDE_BAR_WIDTH)
                 },
-                content = content
+                content = {
+                    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+                        content()
+                        // "Move to" / "Copy to" sheet, over everything.
+                        com.zs.gallery.common.FolderPickerHost()
+                    }
+                }
             )
         }
     )
