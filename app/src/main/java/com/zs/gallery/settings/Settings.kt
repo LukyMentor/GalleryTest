@@ -450,47 +450,7 @@ private fun Sponsor(modifier: Modifier = Modifier) {
                 }
             )
         },
-        // RateUs + Buy me a Coffee Button.
-        footer = {
-            Row(
-                modifier = Modifier.padding(top = CP.normal),
-                horizontalArrangement = Arrangement.spacedBy(CP.normal),
-                verticalAlignment = Alignment.CenterVertically,
-                content = {
-                    val facade = LocalSystemFacade.current
-
-                    // RateUs
-                    FilledTonalButton(
-                        stringResource(R.string.rate_us),
-                        icon = Icons.Outlined.RateReview,
-                        onClick = {
-                            if (BuildConfig.FLAVOR != BuildConfig.FLAVOR_COMMUNITY)
-                                facade.launchAppStore()
-                            else
-                                facade.launch(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/iZakirSheikh/Gallery")))
-                        },
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            backgroundColor = AppTheme.colors.background(
-                                4.dp
-                            )
-                        )
-                    )
-
-                    // Coffee
-                    Button(
-                        stringResource(R.string.buy_me_a_coffee),
-                        icon = Icons.Outlined.DataObject,
-                        onClick = {
-                            when(BuildConfig.FLAVOR){
-                                BuildConfig.FLAVOR_COMMUNITY -> facade.launch(Intent(Intent.ACTION_VIEW,
-                                    Uri.parse("https://github.com/sponsors/iZakirSheikh")))
-                                else -> facade.initiatePurchaseFlow(Paymaster.IAP_BUY_ME_COFFEE)
-                            }
-                        },
-                    )
-                }
-            )
-        }
+        // (Personal build: no "rate us" / "buy me a coffee" buttons.)
     )
 }
 
@@ -533,41 +493,7 @@ private fun ColumnScope.AboutUs() {
         },
     )
 
-    // Privacy Policy
-    Preference(
-        text = textResource(R.string.pref_privacy_policy),
-        icon = Icons.Outlined.PrivacyTip,
-        modifier = Modifier
-            .clip(AppTheme.shapes.medium)
-            .clickable { facade.launch(Settings.PrivacyPolicyIntent) },
-    )
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 24.dp),
-        horizontalArrangement = Arrangement.spacedBy(CP.medium)
-    ) {
-        val colors = ChipDefaults.chipColors(
-            backgroundColor = AppTheme.colors.background(1.dp),
-            contentColor = AppTheme.colors.accent
-        )
-       /* Chip(
-            content = { Label(textResource(R.string.rate_us)) },
-            leadingIcon = { Icon(Icons.Outlined.Star, null) },
-            onClick = facade::launchAppStore,
-            colors = colors,
-            shape = AppTheme.shapes.xSmall
-        )*/
-
-        Chip(
-            content = { Label(textResource(R.string.add_your_language)) },
-            leadingIcon = { Icon(Icons.Outlined.Translate, null) },
-            onClick = { facade.launch(Settings.TranslateIntent) },
-            colors = colors,
-            shape = AppTheme.shapes.xSmall
-        )
-    }
+    // (Personal build: privacy-policy link and "add your language" chip removed.)
 }
 
 /**
@@ -608,25 +534,7 @@ fun Settings(viewState: SettingsViewState) {
                         modifier = Modifier.minimumInteractiveComponentSize()
                     )
                 },
-                actions = {
-                    // Join our telegram channel
-                    val facade = LocalSystemFacade.current
-                    TonalIconButton(
-                        icon = Icons.Outlined.Textsms,
-                        contentDescription = null,
-                        onClick = { facade.launch(Settings.TelegramIntent) },
-                        color = AppTheme.colors.accent,
-                        modifier = Modifier.scale(0.9f)
-                    )
-                    // Report Bugs on Github.
-                    TonalIconButton (
-                        icon = Icons.Outlined.BugReport,
-                        contentDescription = null,
-                        onClick = { facade.launch(Settings.GitHubIssuesPage) },
-                        color = AppTheme.colors.accent,
-                        modifier = Modifier.scale(0.9f)
-                    )
-                }
+                // (Personal build: Telegram and bug-report buttons removed.)
             )
         },
         secondary = {

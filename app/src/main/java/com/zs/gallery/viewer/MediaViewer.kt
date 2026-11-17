@@ -108,6 +108,12 @@ import me.saket.telephoto.zoomable.DoubleClickToZoomListener
 import me.saket.telephoto.zoomable.ZoomSpec
 import me.saket.telephoto.zoomable.ZoomableState
 import me.saket.telephoto.zoomable.zoomable
+import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
+import me.saket.telephoto.zoomable.rememberZoomableImageState
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
 import androidx.compose.foundation.pager.rememberPagerState as PagerState
 import androidx.compose.ui.graphics.vector.rememberVectorPainter as VectorPainter
 import coil3.compose.rememberAsyncImagePainter as Painter
@@ -139,6 +145,7 @@ private fun Modifier.closeGestures(
     enabled: () -> Boolean,
     dismissOffset: MutableFloatState,
     onClose: () -> Unit,
+    onSwipeUp: (() -> Unit)? = null,
 ): Modifier {
     // Edge zone for the back swipe: the system gesture inset plus a little margin.
     val density = LocalDensity.current
@@ -153,9 +160,14 @@ private fun Modifier.closeGestures(
     }
     return this
         .edgeSwipeBack(enabled = enabled, edge = edgeZone, onBack = onClose)
-        .dragToDismiss(enabled = enabled, offset = dismissOffset, onDismiss = onClose)
+        .dragToDismiss(
+            enabled = enabled,
+            offset = dismissOffset,
+            onDismiss = onClose,
+            onSwipeUp = onSwipeUp
+        )
         .graphicsLayer {
-            // Follow the finger and shrink slightly while dragging down.
+            // Follow the finger (and shrink slightly while dragging down to close).
             val offset = dismissOffset.floatValue
             val progress = (offset / (size.height * 0.5f)).coerceIn(0f, 1f)
             translationY = offset
@@ -170,21 +182,17 @@ private fun Carousel(
     viewState: MediaViewerViewState,
     onRequest: (event: Int) -> Unit,
     dismissOffset: MutableFloatState,
+    sharedElementEnabled: Boolean,
+    onReady: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val data = viewState.data
     val state = PagerState(initialPage = viewState.index, pageCount = { data.size })
     val scope = rememberCoroutineScope()
-    //
-    val zoomable =
-        ZoomableState(DEFAULT_ZOOM_SPECS).apply { contentScale = ContentScale.None }
-    // Modifier for zoomable images,
-    // triggering immersive mode on click and handling double-tap zoom
-    val zModifier = Modifier.zoomable(
-        zoomable,
-        onClick = { onRequest(EVENT_IMMERSIVE_VIEW) },
-        onDoubleClick = DoubleClickToZoomListener.cycle(2f)
-    )
+    // Every image page owns its zoom state; this points at the one currently in focus.
+    var focusedZoom by remember { mutableStateOf<ZoomableState?>(null) }
+    // Boolean only, so the pager recomposes when zoomed-in/out flips, not on every zoom frame.
+    val zoomedOut by remember { derivedStateOf { focusedZoom?.isZoomedOut ?: true } }
     // TODO - Remove this once inBuilt Video Player is available.
     val vector = VectorPainter(Icons.Outlined.PlayCircleFilled)
     val playIconModifier = Modifier.drawWithCache {
@@ -203,101 +211,101 @@ private fun Carousel(
 
     // Handle BackPress
     BackHandler {
+        val zoom = focusedZoom
         when {
             // reset zoom
-            !zoomable.isZoomedOut -> scope.launch { zoomable.resetZoom() }
+            zoom != null && !zoom.isZoomedOut -> scope.launch { zoom.resetZoom() }
             // else ask parent to handle back-press
             else -> onRequest(EVENT_BACK_PRESS)
         }
     }
-    // Horizontal pager to display the images/videos
-    // Disable swipe when zoomed in
-    // Preload adjacent pages for smoother transitions
-    // (A debug log that read zoomFraction here made the whole pager recompose on every zoom frame.)
     val navController = LocalNavController.current
     val ctx = LocalContext.current
-    // Decode photos at ~1.5x the screen's long side instead of their full resolution (a 50 MP
-    // photo was ~200 MB of pixels per page). BitmapFactory samples by powers of two, so this
-    // lets big photos be decoded at half size, which is what makes them open quickly.
-    val windowInfo = LocalWindowInfo.current
-    val decodeSize = remember(windowInfo.containerSize) {
-        val longSide = maxOf(windowInfo.containerSize.width, windowInfo.containerSize.height)
-        (longSide * 1.5f).toInt().coerceIn(1080, 4096)
-    }
     HorizontalPager(
         state = state,
         key = { data[it].id },
         pageSpacing = ContentPadding.normal,
         modifier = modifier.closeGestures(
-            enabled = { zoomable.isZoomedOut },
+            enabled = { focusedZoom?.isZoomedOut ?: true },
             dismissOffset = dismissOffset,
-            onClose = { onRequest(EVENT_BACK_PRESS) }
+            onClose = { onRequest(EVENT_BACK_PRESS) },
+            onSwipeUp = { onRequest(EVENT_SHOW_INFO) }
         ),
-        userScrollEnabled = zoomable.isZoomedOut,
+        // Disable swipe when zoomed in
+        userScrollEnabled = zoomedOut,
+        // Preload adjacent pages for smoother transitions
         beyondViewportPageCount = 1,
         pageContent = { index ->
             val item = data[index]
             // isFocused indicates whether this item is currently the focused item in the viewpager.
-            // It's used to selectively apply properties (like shared element modifiers) only to the
-            // focused item,
-            // ensuring smooth animations and optimized performance by avoiding unnecessary modifications
-            // to other items.
             val isFocused = state.currentPage == index
-            val painter = Painter(
-                ImageRequest(ctx).apply {
-                    // Show the grid thumbnail until the full image is decoded (no black screen).
-                    placeholderMemoryCacheKey(thumbnailCacheKey(item.id))
-                    // For images, set a memory cache key using the item's ID.
-                    // Load the image data from its file URI instead of a image URI.
-                    // This allows for consistent image loading, matching what's shown during the loading phase,
-                    // and prevents the image from being reloaded, which could cause a blinking effect.
-                    // Request the original size of the image.
-                    // Disable the preference for cached thumbnails to ensure the full-resolution image is loaded.
-                    // This is crucial for displaying high-quality images in the viewer.
-                    // Using the content URI directly helps in leveraging Coil's caching mechanism effectively.
-                    if (item.isImage) {
-                        memoryCacheKey("${item.id}")
-                        data(MediaProvider.buildContentUri(item.id))
-                        this.size(decodeSize, decodeSize)
-                        this.scale(Scale.FIT)
-                        this.precision(Precision.INEXACT)
-                        preferCachedThumbnail(false)
-                    } else data(item.mediaUri)
-                }.build(),
-                onSuccess = {
-                    val size = it.painter.intrinsicSize
-                    if (isFocused)
-                        scope.launch { zoomable.scaledInsideAndCenterAlignedFrom(size) }
-                },
-            )
             // if the user navigated to this item
-            // TODO - maybe move to launched- effect.
-            if (isFocused) {
-                viewState.focused = item.id
-                zoomable.scaledInsideAndCenterAlignedFrom(painter.intrinsicSize)
-            }
-            // The content
-            Image(
-                painter = painter,
-                contentDescription = item.name,
-                alignment = Alignment.Center,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .thenIf(isFocused) {
-                        when {
-                            item.isImage -> zModifier
-                            else -> playIconModifier.clickable(null, null) {
+            if (isFocused) viewState.focused = item.id
+            if (item.isImage) {
+                // Sharp zoom: telephoto shows a screen-sized image first and then loads full
+                // resolution tiles for just the zoomed-in part (sub-sampling), like Google
+                // Photos / Aves. The grid thumbnail is shown until the first image is ready.
+                val pageZoom = ZoomableState(DEFAULT_ZOOM_SPECS)
+                val imageState = rememberZoomableImageState(pageZoom)
+                if (isFocused) {
+                    SideEffect { focusedZoom = pageZoom }
+                    // Tell the screen once something (placeholder or image) is on screen.
+                    LaunchedEffect(imageState) {
+                        snapshotFlow { imageState.isPlaceholderDisplayed || imageState.isImageDisplayed }
+                            .first { it }
+                        onReady()
+                    }
+                }
+                ZoomableAsyncImage(
+                    model = remember(item.id) {
+                        ImageRequest(ctx)
+                            .data(MediaProvider.buildContentUri(item.id))
+                            .placeholderMemoryCacheKey(thumbnailCacheKey(item.id))
+                            // Always the real image, never the MediaStore thumbnail.
+                            .preferCachedThumbnail(false)
+                            .build()
+                    },
+                    contentDescription = item.name,
+                    state = imageState,
+                    onClick = { onRequest(EVENT_IMMERSIVE_VIEW) },
+                    onDoubleClick = DoubleClickToZoomListener.cycle(2f),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .thenIf(isFocused && sharedElementEnabled) {
+                            RouteFiles.sharedElement(viewState.focused)
+                        }
+                )
+            } else {
+                if (isFocused) SideEffect {
+                    focusedZoom = null
+                    onReady()
+                }
+                // Video: still frame with a play button that opens the player.
+                val painter = Painter(
+                    ImageRequest(ctx)
+                        .data(item.mediaUri)
+                        .placeholderMemoryCacheKey(thumbnailCacheKey(item.id))
+                        .build()
+                )
+                Image(
+                    painter = painter,
+                    contentDescription = item.name,
+                    alignment = Alignment.Center,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .thenIf(isFocused) {
+                            playIconModifier.clickable(null, null) {
                                 navController.navigate(
                                     RouteIntentViewer(
                                         item.mediaUri,
                                         item.mimeType
                                     )
                                 )
-                            }
-                        } then RouteFiles.sharedElement(viewState.focused)
-                    }
-            )
+                            }.thenIf(sharedElementEnabled) { RouteFiles.sharedElement(viewState.focused) }
+                        }
+                )
+            }
         }
     )
 }
@@ -311,7 +319,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
     var closing by remember { mutableStateOf(false) }
     // Vertical drag-to-dismiss offset in px, shared by the pager and the background fade.
     val dismissOffset = remember { mutableFloatStateOf(0f) }
-    val isDragging by remember { derivedStateOf { dismissOffset.floatValue > 0f } }
+    val isDragging by remember { derivedStateOf { dismissOffset.floatValue != 0f } }
     val compact = LocalWindowSize.current.width < Category.Medium
     val surface = rememberAcrylicSurface()
     val colors = AppTheme.colors
@@ -448,7 +456,10 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                 .source(surface)
                 .fillMaxSize()
             // If data is loading, display a placeholder image with shared element transition.
-            if (isLoading)
+            // The opening thumbnail stays underneath until the carousel has actually drawn the
+            // focused photo, so switching between them never shows an empty frame.
+            var carouselReady by remember { mutableStateOf(false) }
+            if (isLoading || !carouselReady)
                 AsyncImage(
                     contentDescription = null,
                     alignment = Alignment.Center,
@@ -468,10 +479,18 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                             dismissOffset = dismissOffset,
                             onClose = { onRequest(EVENT_BACK_PRESS) }
                         )
-                        .then(RouteFiles.sharedElement(viewState.focused)),
+                        .thenIf(!carouselReady) { RouteFiles.sharedElement(viewState.focused) },
                 )
-            // If data is loaded, display the Carousel with the media items.
-            else Carousel(viewState, onRequest, dismissOffset, modifier = modifier)
+            // If data is loaded, display the Carousel with the media items (drawn on top).
+            if (!isLoading)
+                Carousel(
+                    viewState,
+                    onRequest,
+                    dismissOffset,
+                    sharedElementEnabled = carouselReady,
+                    onReady = { carouselReady = true },
+                    modifier = modifier
+                )
         }
     )
 

@@ -222,7 +222,8 @@ object Settings {
     val KEY_DYNAMIC_COLORS =
         booleanPreferenceKey(
             PREFIX + "_dynamic_colors",
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+            // Personal build: off by default so the app uses Very Peri, not wallpaper colours.
+            false
         )
     // TODO: Use an integer instead of a boolean to allow for multiple background effects in the future.
     // 0 - represents 0ff state; 1 ambient

@@ -58,6 +58,13 @@ data class MediaFile(
     val expires: Long =  -1
 ) {
     val isImage get() = mimeType.startsWith("image/")
+
+    /**
+     * Date used by the timeline: when the photo/video was *taken* (camera date), falling back to
+     * the file's modification date for files without one. Edited or copied photos therefore stay
+     * on the day they were shot.
+     */
+    val timelineDate: Long get() = if (dateTaken > 0) dateTaken else dateModified
     val mediaUri
         get() = if (isImage)
             ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
@@ -76,8 +83,12 @@ data class MediaFile(
         height = cursor.getInt(7),
         width = cursor.getInt(8),
         path = cursor.getString(9),
-        dateTaken = cursor.getLong(10) * 1000,
+        // DATE_TAKEN is already in milliseconds (unlike DATE_ADDED/DATE_MODIFIED, in seconds).
+        dateTaken = cursor.getLong(10),
         duration = cursor.getInt(11),
         expires = if (cursor.columnCount == 13) (cursor.getLong(12) * 1000) else -1
     )
 }
+
+/** Newest first by [MediaFile.timelineDate]; ties keep their query order (stable sort). */
+fun List<MediaFile>.sortedForTimeline(): List<MediaFile> = sortedByDescending { it.timelineDate }

@@ -39,6 +39,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.zs.core.BuildConfig
 import com.zs.core.store.MediaFile
+import com.zs.core.store.sortedForTimeline
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 import com.zs.core.store.MediaProvider
 import com.zs.gallery.R
 import com.zs.gallery.common.Action
@@ -98,7 +101,7 @@ class MediaViewerViewModel(
     override var details: MediaFile? by mutableStateOf(null)
     val current inline get() = data.find { it.id == focused }
     override val title: CharSequence by derivedStateOf {
-        sdf.format(Date(current?.dateModified ?: return@derivedStateOf ""))
+        sdf.format(Date(current?.timelineDate ?: return@derivedStateOf ""))
     }
 
     //
@@ -200,9 +203,23 @@ class MediaViewerViewModel(
     }
 
     init {
+        // Reuse the list the grid already loaded (same order) instead of querying the whole
+        // library again; only a short delay so the opening animation can finish first.
+        val cached = MediaListCache.get(source, _args.third)
+            ?.takeIf { list -> list.any { it.id == focused } }
+        if (cached != null) {
+            firstUpdate = false
+            viewModelScope.launch {
+                delay(300)
+                if (data.isEmpty()) data = cached
+            }
+        }
         @Suppress("NewApi")
         provider.observer(MediaProvider.EXTERNAL_CONTENT_URI)
             .debounceAfterFirst(300)
+            // With a cached list the initial "load everything" emission isn't needed; later
+            // emissions (files changed) still reload. Favourites also react to their own list.
+            .drop(if (cached != null && source != SOURCE_FAV) 1 else 0)
             .let { stream ->
                 when (source) {
                     SOURCE_FAV -> stream.combine(
@@ -233,6 +250,8 @@ class MediaViewerViewModel(
                     }
                 }
             }
+            // Same order as the grid (date taken), except the bin (by expiry).
+            .map { values -> if (source == SOURCE_BIN) values else values.sortedForTimeline() }
             // Load the list off the main thread.
             .flowOn(Dispatchers.Default)
             .onEach(onRequestUpdate)

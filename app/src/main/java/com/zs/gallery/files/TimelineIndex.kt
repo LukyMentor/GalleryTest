@@ -49,7 +49,7 @@ internal class TimelineIndex(data: Mapped<MediaFile>) {
         for ((_, items) in data) {
             startIndex[i] = lazyIndex
             sizes[i] = items.size
-            val t = items.firstOrNull()?.dateModified ?: 0L
+            val t = items.firstOrNull()?.timelineDate ?: 0L
             time[i] = t
             calendar.timeInMillis = t
             monthKey[i] = calendar.get(Calendar.YEAR) * 12 + calendar.get(Calendar.MONTH)

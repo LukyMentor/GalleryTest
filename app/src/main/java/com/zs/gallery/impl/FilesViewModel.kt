@@ -53,6 +53,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.zs.core.common.PathUtils
 import com.zs.core.store.MediaFile
+import com.zs.core.store.sortedForTimeline
 import com.zs.core.store.MediaProvider
 import com.zs.gallery.MainActivity
 import com.zs.gallery.R
@@ -317,7 +318,7 @@ class FilesViewModel(
         var currentDay = Long.MIN_VALUE
         var current: MutableList<MediaFile>? = null
         for (file in values) {
-            val time = file.dateModified
+            val time = file.timelineDate
             val day = Math.floorDiv(time + zone.getOffset(time), DateUtils.DAY_IN_MILLIS)
             if (day != currentDay || current == null) {
                 currentDay = day
@@ -367,8 +368,13 @@ class FilesViewModel(
                     }
                 }
             }
-            // Query + grouping happen on a background thread; only the result touches the UI.
-            .map { values -> group(values) }
+            // Query + sorting + grouping happen on a background thread; only the result touches
+            // the UI. The sorted list is also shared with the viewer so it opens instantly.
+            .map { values ->
+                val sorted = if (source == SOURCE_BIN) values else values.sortedForTimeline()
+                MediaListCache.put(source, arg, sorted)
+                group(sorted)
+            }
             .flowOn(Dispatchers.Default)
             .onEach(onRequestUpdate)
             .catch { exception ->

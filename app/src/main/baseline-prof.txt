@@ -1,0 +1,16 @@
+Lcom/zs/gallery/**;
+HSPLcom/zs/gallery/**;->**(**)**
+Lcom/zs/core/**;
+HSPLcom/zs/core/**;->**(**)**
+Lcom/zs/compose/**;
+HSPLcom/zs/compose/**;->**(**)**
+Lcoil3/**;
+HSPLcoil3/**;->**(**)**
+Lme/saket/telephoto/**;
+HSPLme/saket/telephoto/**;->**(**)**
+Ldev/chrisbanes/haze/**;
+HSPLdev/chrisbanes/haze/**;->**(**)**
+Landroidx/compose/foundation/lazy/grid/**;
+HSPLandroidx/compose/foundation/lazy/grid/**;->**(**)**
+Landroidx/compose/foundation/pager/**;
+HSPLandroidx/compose/foundation/pager/**;->**(**)**

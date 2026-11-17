@@ -64,13 +64,16 @@ fun Modifier.blockVerticalDrag(): Modifier = pointerInput(Unit) {
  * (handled by children) win whenever they claim the gesture first.
  *
  * @param enabled evaluated at the start of every gesture (e.g. only when not zoomed in).
- * @param offset current vertical drag offset in px (0 = resting).
+ * @param offset current vertical drag offset in px (0 = resting; negative = dragged up).
+ * @param onSwipeUp if set, dragging *up* (with resistance) past a threshold calls it, e.g. to
+ *   show the photo's details; the content then springs back.
  */
 fun Modifier.dragToDismiss(
     enabled: () -> Boolean,
     offset: MutableFloatState,
     onDismiss: () -> Unit,
-): Modifier = pointerInput(Unit) {
+    onSwipeUp: (() -> Unit)? = null,
+): Modifier = pointerInput(onSwipeUp != null) {
     coroutineScope {
         // Settle animation; cancelled whenever a new gesture starts.
         var settle: Job? = null
@@ -83,6 +86,7 @@ fun Modifier.dragToDismiss(
             val slop = viewConfiguration.touchSlop
             var total = Offset.Zero
             var dragging = false
+            var up = false
             var released = false
             while (true) {
                 val event = awaitPointerEvent()
@@ -100,20 +104,31 @@ fun Modifier.dragToDismiss(
                 if (!dragging) {
                     total += delta
                     if (total.getDistance() < slop) continue
-                    // Only a clearly vertical, downward drag starts a dismiss.
-                    if (total.y > 0 && total.y > abs(total.x) * 1.2f) dragging = true
-                    else break
+                    // Only a clearly vertical drag starts: down = close, up = details.
+                    val vertical = abs(total.y) > abs(total.x) * 1.2f
+                    when {
+                        vertical && total.y > 0 -> dragging = true
+                        vertical && total.y < 0 && onSwipeUp != null -> {
+                            dragging = true
+                            up = true
+                        }
+                        else -> break
+                    }
                 }
                 change.consume()
-                offset.floatValue = (offset.floatValue + delta.y).coerceAtLeast(0f)
+                offset.floatValue =
+                    if (up) (offset.floatValue + delta.y * 0.5f).coerceAtMost(0f) // resistance
+                    else (offset.floatValue + delta.y).coerceAtLeast(0f)
             }
             if (!dragging) return@awaitEachGesture
             val velocity = tracker.calculateVelocity().y
             val threshold = 96.dp.toPx()
-            if (released && (offset.floatValue > threshold || velocity > 1200.dp.toPx())) {
+            if (released && !up && (offset.floatValue > threshold || velocity > 1200.dp.toPx())) {
                 onDismiss()
                 return@awaitEachGesture
             }
+            if (released && up && (offset.floatValue < -threshold / 2 || velocity < -1200.dp.toPx()))
+                onSwipeUp?.invoke()
             // Spring back to rest.
             val start = offset.floatValue
             settle = launch {

@@ -122,7 +122,7 @@ fun DetailsViewDialog(
         content = {
             // Date Modified
             Header(
-                remember(value.id) { formatter.format(Date(value.dateModified)) },
+                remember(value.id) { formatter.format(Date(value.timelineDate)) },
                 style = AppTheme.typography.title2,
                 contentPadding = PaddingValues(
                     horizontal = ContentPadding.medium,
