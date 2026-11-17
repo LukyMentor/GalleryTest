@@ -61,12 +61,15 @@ fun Folder(
     value: Folder,
     modifier: Modifier = Modifier
 ) = Column(
+    // Fixed-radius ripple clip (a percentage of the whole tile cut into the text below the image)
+    // and room at the bottom so the info line never sits in the rounded corner.
     modifier = Modifier
-        .clip(DEFAULT_SHAPE)  // clip the ripple
-        .then(modifier),
+        .clip(RoundedCornerShape(16.dp))  // clip the ripple
+        .then(modifier)
+        .padding(bottom = 10.dp),
     horizontalAlignment = Alignment.Start,
     content = {
-        val elevation = if (kotlin.random.Random.nextBoolean()) 0.5.dp else 1.dp
+        val elevation = if (value.path.hashCode() % 2 == 0) 0.5.dp else 1.dp
         // Image
         Box(
             content = {
@@ -102,8 +105,9 @@ fun Folder(
                 top = CP.medium,
                 start = CP.medium
             ),
-            style = AppTheme.typography.body2,
-            fontWeight = FontWeight.Normal,
+            style = AppTheme.typography.body1.copy(fontSize = 17.sp),
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
             text = value.name
         )
 
@@ -113,9 +117,10 @@ fun Folder(
                 id = R.string.folders_scr_folder_name_sds, value.count,
                 ctx.fileSizeFormatted(value.size.toLong())
             ),
-            style = AppTheme.typography.label3.copy(fontSize = 10.sp),
-            color = AppTheme.colors.onBackground.copy(ContentAlpha.medium),
-            modifier = Modifier.padding(start = CP.medium),
+            style = AppTheme.typography.body2.copy(fontSize = 14.sp),
+            color = AppTheme.colors.onBackground.copy(alpha = 0.72f),
+            maxLines = 1,
+            modifier = Modifier.padding(start = CP.medium, top = 2.dp),
         )
     }
 )
