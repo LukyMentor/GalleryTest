@@ -102,7 +102,7 @@ fun MapScreen() {
     val selected = remember(selectedIds, photos) {
         val ids = selectedIds ?: return@remember null
         val byId = photos.associateBy { it.id }
-        val list = ids.mapNotNull { byId[it] }
+        val list = ids.asList().mapNotNull { byId[it] }
         if (list.isEmpty()) null else PhotoCluster(list, 0f, 0f)
     }
 
