@@ -207,14 +207,16 @@ private class DismissController(
         val flick = velocityY > 650f * density && anim.value > 20f * density
         if (released && (anim.value >= threshold || flick)) {
             dismissed = true
+            // Close right away: the grid is composed underneath at once (the black backdrop
+            // disappears as soon as `dismissed` is set) while the photo keeps flying down and
+            // fades out on top of it - no black gap between the photo and the grid.
+            close()
             scope.launch {
-                // Keep moving the way it was flung, fading out with the background.
                 anim.animateTo(
                     anim.value + height,
                     tween(durationMillis = 220, easing = LinearOutSlowInEasing),
                     initialVelocity = velocityY
                 )
-                close()
                 // If the screen is somehow still here, never leave the photo hanging.
                 delay(700)
                 anim.snapTo(0f)
@@ -507,13 +509,15 @@ fun MediaViewer(viewState: MediaViewerViewState) {
         // Black backdrop that fades out while the photo is dragged down (read in draw phase).
         containerColor = Color.Transparent,
         modifier = Modifier.drawBehind {
+            // Closing (drag, back or the back button): no black at all, the grid shows at once.
+            if (closing || dismissOffset.dismissed) return@drawBehind
             val progress = (dismissOffset.offset / (size.height * 0.4f)).coerceIn(0f, 1f)
             drawRect(Color.Black.copy(alpha = 1f - progress))
         },
         // TopAppBar
         topBar = {
             MediaViewerTopAppBar(
-                visible = !immersive && !isDragging,
+                visible = !immersive && !isDragging && !closing,
                 title = viewState.title,
                 provider = surface,
                 navigationIcon = {
@@ -536,7 +540,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
         floatingActionButton = {
             // Large round buttons on the right, like Aves (and like the app's navigation bar).
             ViewerActions(
-                visible = !immersive && !isLoading && !isDragging && !sheetOpen,
+                visible = !immersive && !isLoading && !isDragging && !sheetOpen && !closing,
                 actions = viewState.actions,
                 onAction = { viewState.onPerformAction(it, ctx.findActivity()) },
                 modifier = Modifier.windowInsetsPadding(
@@ -560,7 +564,8 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                     viewState.focused,
                     modifier = Modifier
                         .graphicsLayer {
-                            alpha = 1f - (dismissOffset.offset / (size.height * 0.4f)).coerceIn(0f, 1f)
+                            alpha = if (closing || dismissOffset.dismissed) 0f
+                            else 1f - (dismissOffset.offset / (size.height * 0.4f)).coerceIn(0f, 1f)
                         }
                         .thenIf(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             blur(100.dp)
