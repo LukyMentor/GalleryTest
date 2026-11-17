@@ -54,18 +54,18 @@ jobs:
       - name: Rename APK
         run: |
           APK=$(ls app/build/outputs/apk/community/release/*.apk | head -n 1)
-          mv "$APK" "MyGallery-${{ github.run_number }}.apk"
+          mv "$APK" "MGallery-${{ github.run_number }}.apk"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: MyGallery-${{ github.run_number }}
-          path: MyGallery-${{ github.run_number }}.apk
+          name: MGallery-${{ github.run_number }}
+          path: MGallery-${{ github.run_number }}.apk
 
       - name: Publish release (direct phone download)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: My Gallery build ${{ github.run_number }}
+          name: M Gallery build ${{ github.run_number }}
           body: ${{ github.event.head_commit.message }}
           make_latest: true
-          files: MyGallery-${{ github.run_number }}.apk
+          files: MGallery-${{ github.run_number }}.apk

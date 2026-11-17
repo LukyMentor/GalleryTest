@@ -62,6 +62,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
+import androidx.compose.runtime.snapshotFlow
+import com.zs.compose.theme.AppTheme
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -133,6 +136,18 @@ internal fun TimelineFastScroller(
         return rows.indexOfRow(row)
     }
 
+    // Light "tick" each time the drag crosses into another month (or section), like Google
+    // Photos but softer.
+    LaunchedEffect(dragging, index) {
+        if (!dragging) return@LaunchedEffect
+        snapshotFlow {
+            val section = index.sectionOf(state.firstVisibleItemIndex)
+            if (index.byDate) index.monthKey[section] else section
+        }
+            .drop(1)
+            .collect { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
+    }
+
     // Visibility: show while scrolling or dragging, hide a moment after.
     val scrolling = state.isScrollInProgress
     var visible by remember { mutableStateOf(false) }
@@ -176,7 +191,7 @@ internal fun TimelineFastScroller(
             val label by remember(index) {
                 derivedStateOf {
                     val section = index.sectionOf(state.firstVisibleItemIndex)
-                    monthYearLabel(index.time[section])
+                    if (index.byDate) monthYearLabel(index.time[section]) else index.labels[section]
                 }
             }
             Bubble(
@@ -217,7 +232,7 @@ internal fun TimelineFastScroller(
                         val grab = down.position.y
                         dragFraction = latestFraction()
                         dragging = true
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         try {
                             while (true) {
                                 val event = awaitPointerEvent()
@@ -267,11 +282,18 @@ private fun Modifier.centerVerticallyAt(y: () -> Float): Modifier =
     }
 
 @Composable
-private fun Bubble(text: String, large: Boolean, modifier: Modifier = Modifier) {
+private fun Bubble(
+    text: String,
+    large: Boolean,
+    modifier: Modifier = Modifier,
+    emphasized: Boolean = false,
+) {
+    // Year markers stand out: accent background with bold white text.
+    val accent = AppTheme.colors.accent
     Box(
         modifier = modifier
             .shadow(if (large) 6.dp else 3.dp, PillShape)
-            .background(BubbleColor, PillShape)
+            .background(if (emphasized) accent else BubbleColor, PillShape)
             .padding(
                 horizontal = if (large) 18.dp else 12.dp,
                 vertical = if (large) 8.dp else 5.dp
@@ -281,16 +303,20 @@ private fun Bubble(text: String, large: Boolean, modifier: Modifier = Modifier) 
             text = text,
             maxLines = 1,
             style = TextStyle(
-                color = BubbleTextColor,
+                color = if (emphasized) Color.White else BubbleTextColor,
                 fontSize = if (large) 22.sp else 14.sp,
-                fontWeight = if (large) FontWeight.Medium else FontWeight.Normal
+                fontWeight = when {
+                    emphasized -> FontWeight.Bold
+                    large -> FontWeight.Medium
+                    else -> FontWeight.Normal
+                }
             )
         )
     }
 }
 
-/** A marker on the track: [fraction] 0..1 along it, and its text. */
-private class Crumb(val fraction: Float, val label: String)
+/** A marker on the track: [fraction] 0..1 along it, its text, and whether it marks a year. */
+private class Crumb(val fraction: Float, val label: String, val emphasized: Boolean = false)
 
 /**
  * One candidate per month that has photos. Year changes are kept first, then as many months as
@@ -306,10 +332,17 @@ private fun buildCrumbs(
     data class Candidate(val fraction: Float, val label: String, val isYear: Boolean)
 
     val candidates = ArrayList<Candidate>()
+    if (!index.byDate) {
+        // Not a date order (e.g. by size): one marker per section, by its title.
+        for (s in 0 until index.sections) {
+            val fraction = (rows.rowStart[s] / scrollable).coerceIn(0f, 1f)
+            candidates += Candidate(fraction, index.labels[s], false)
+        }
+    }
     var previousMonth = Int.MIN_VALUE
     var previousYear = Int.MIN_VALUE
     val monthFormat = SimpleDateFormat("LLL", Locale.getDefault())
-    for (s in 0 until index.sections) {
+    for (s in 0 until (if (index.byDate) index.sections else 0)) {
         val key = index.monthKey[s]
         if (key == previousMonth) continue
         previousMonth = key
@@ -329,7 +362,7 @@ private fun buildCrumbs(
                 if (placed.none { kotlin.math.abs(it.fraction - c.fraction) < MIN_GAP_FRACTION })
                     placed += c
             }
-            placed.sortedBy { it.fraction }.map { Crumb(it.fraction, it.label) }
+            placed.sortedBy { it.fraction }.map { Crumb(it.fraction, it.label, it.isYear) }
         }
 }
 
@@ -340,7 +373,7 @@ private const val MIN_GAP_FRACTION = 0.045f
 private fun Crumbs(crumbs: List<Crumb>, topPx: Float, range: Float, thumbHeightPx: Float) {
     Layout(
         content = {
-            for (crumb in crumbs) Bubble(crumb.label, large = false)
+            for (crumb in crumbs) Bubble(crumb.label, large = false, emphasized = crumb.emphasized)
         },
         modifier = Modifier.fillMaxSize()
     ) { measurables, constraints ->

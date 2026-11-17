@@ -15,7 +15,7 @@
        5. The snackbar message should have this structure: Title\n bold + experimental + message.
           The string resources should follow the above rules strictly
      -->
-    <string name="app_name" translatable="false">My Gallery</string>
+    <string name="app_name" translatable="false">M Gallery</string>
     <string name="permission_scr_title">Storage Permission</string>
     <string name="allow">Allow</string>
     <string name="permission_scr_desc"><b>Gallery</b> requires permission to access your
@@ -45,7 +45,7 @@
 
     <string name="msg_unknown_error">Something went wrong. An unknown error occurred.</string>
     <string name="report">Report</string>
-    <string name="timeline">Timeline</string>
+    <string name="timeline">Photos</string>
     <string name="files_source_folder_title_s">123%1$s</string>
     <string name="files_selected_d">%1$d selected</string>
     <string name="select_all">Select All</string>

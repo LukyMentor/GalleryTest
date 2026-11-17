@@ -83,7 +83,23 @@ operator fun SavedStateHandle.get(route: RouteFiles) =
  * @property meta title and icon of the screen.
  *
  */
+/** What the grid shows. */
+enum class MediaFilter { ALL, PHOTOS, VIDEOS, SCREENSHOTS }
+
+/** How the grid is ordered (and grouped). */
+enum class MediaOrder { NEWEST, OLDEST, LARGEST }
+
 interface FilesViewState : SelectionTracker {
+
+    /** Whether this screen offers the filter/sort bar (not in the recycle bin). */
+    val supportsFilters: Boolean
+
+    /** Current filter / order; changing them regroups the grid. */
+    var filter: MediaFilter
+    var order: MediaOrder
+
+    /** True when the shown [data] is grouped by size rather than by date. */
+    val groupedBySize: Boolean
 
     /** If icon is null use app icon. */
     val meta: Pair<ImageVector?, CharSequence>

@@ -40,6 +40,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Circle
@@ -234,7 +235,18 @@ fun Files(viewState: FilesViewState) {
             //
             val data = viewState.data
             // Data
+            val showSizes = viewState.groupedBySize
             val content: LazyGridScope.() -> Unit = content@{
+                // Filter / sort bar: always first, so a filter that matches nothing can be undone.
+                if (viewState.supportsFilters)
+                    item(key = "filter_bar", contentType = "filter_bar", span = { GridItemSpan(maxLineSpan) }) {
+                        FilterBar(
+                            filter = viewState.filter,
+                            order = viewState.order,
+                            onFilter = { viewState.filter = it },
+                            onOrder = { viewState.order = it },
+                        )
+                    }
                 // emit state or return non-null | non empty data points
                 val data = emit(data) ?: return@content
                 // items along with sticky headers
@@ -280,6 +292,7 @@ fun Files(viewState: FilesViewState) {
                             MediaFile(
                                 focused = false,
                                 value = item,
+                                sizeLabel = if (showSizes) formatSize(item.size) else null,
                                 checked = when {
                                     !viewState.isInSelectionMode -> -1
                                     viewState.isSelected(item.id) -> 1
@@ -301,7 +314,11 @@ fun Files(viewState: FilesViewState) {
                 .union(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))).asPaddingValues() +
                     (Padding(end = if (!compact) CP.large else 0.dp) + Padding(horizontal = CP.medium))
             // Position model shared by the fast scroller and drag-to-select.
-            val timeline = remember(data) { data?.takeIf { it.isNotEmpty() }?.let(::TimelineIndex) }
+            val leading = if (viewState.supportsFilters) 1 else 0
+            val byDate = !viewState.groupedBySize
+            val timeline = remember(data, leading, byDate) {
+                data?.takeIf { it.isNotEmpty() }?.let { TimelineIndex(it, byDate, leading) }
+            }
             val currentTimeline by rememberUpdatedState(timeline)
             val currentPadding by rememberUpdatedState(contentPadding)
             val density = LocalDensity.current

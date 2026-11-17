@@ -119,6 +119,20 @@ import com.zs.gallery.common.compose.LocalSystemFacade
 import com.zs.gallery.common.compose.background
 import com.zs.gallery.common.compose.composable
 import com.zs.gallery.map.MapScreen
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.zs.gallery.map.RouteMap
 import androidx.compose.material.icons.filled.Public
 import com.zs.gallery.common.compose.preference
@@ -409,47 +423,40 @@ private fun NavigationBar(
     val routes = @Composable {
         // Get the current navigation destination from NavController
         val current by navController.currentBackStackEntryAsState()
-        val colors = NavigationItemDefaults.colors(
-            selectedIndicatorColor = if (contentColor == colors.onAccent) contentColor.copy(
-                ContentAlpha.indication
-            ) else colors.accent,
-            selectedTextColor = if (contentColor == colors.onAccent) contentColor else colors.accent,
-            unselectedIconColor = if (contentColor == colors.onAccent) colors.onAccent else colors.onBackground,
-            unselectedTextColor = if (contentColor == colors.onAccent) colors.onAccent else colors.onBackground
+        val onAccentBar = contentColor == colors.onAccent
+        val navColors = NavColors(
+            indicator = if (onAccentBar) contentColor.copy(ContentAlpha.indication) else colors.accent,
+            selectedIcon = if (onAccentBar) contentColor else colors.onAccent,
+            selectedText = if (onAccentBar) contentColor else colors.accent,
+            unselected = if (onAccentBar) colors.onAccent else colors.onBackground,
         )
-
-        // Required to launch review.
-        val facade = LocalSystemFacade.current
         val primary by navController.primary
 
-        // Timeline
-        NavigationItem(
-            label = { Label(text = textResource(R.string.timeline)) },
-            icon = { Icon(imageVector = Icons.Filled.PhotoLibrary, contentDescription = null) },
+        // Photos (timeline)
+        AnimatedNavItem(
+            label = textResource(R.string.timeline),
+            icon = Icons.Filled.PhotoLibrary,
             selected = primary == RouteFiles.domain,
             onClick = { navController.toRoute(RouteFiles) },
-            isBottomNav = isBottomAligned,
-            colors = colors
+            colors = navColors
         )
 
         // Folders
-        NavigationItem(
-            label = { Label(text = textResource(R.string.folders)) },
-            icon = { Icon(imageVector = Icons.Filled.FolderCopy, contentDescription = null) },
+        AnimatedNavItem(
+            label = textResource(R.string.folders),
+            icon = Icons.Filled.FolderCopy,
             selected = primary == RouteFolders.domain,
             onClick = { navController.toRoute(RouteFolders) },
-            isBottomNav = isBottomAligned,
-            colors = colors
+            colors = navColors
         )
 
         // Map: where photos were taken.
-        NavigationItem(
-            label = { Label(text = "Map") },
-            icon = { Icon(imageVector = Icons.Filled.Public, contentDescription = null) },
+        AnimatedNavItem(
+            label = "Map",
+            icon = Icons.Filled.Public,
             selected = primary == RouteMap.domain,
             onClick = { navController.toRoute(RouteMap) },
-            isBottomNav = isBottomAligned,
-            colors = colors
+            colors = navColors
         )
 
         // Settings
@@ -676,5 +683,85 @@ fun Home(
             statusBarColor = color
             navigationBarColor = color
         }
+    }
+}
+
+/** Colours of [AnimatedNavItem]. */
+private class NavColors(
+    val indicator: Color,
+    val selectedIcon: Color,
+    val selectedText: Color,
+    val unselected: Color,
+)
+
+/**
+ * Bottom-bar item with animated selection: the indicator pill grows in and fills with colour,
+ * the icon gives a small spring "pop" and the colours cross-fade, instead of switching instantly.
+ */
+@Composable
+private fun AnimatedNavItem(
+    label: CharSequence,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+    colors: NavColors,
+) {
+    val spatial = spring<Dp>(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow)
+    val indicatorWidth by animateDpAsState(if (selected) 60.dp else 36.dp, spatial, label = "nav_indicator_w")
+    val indicatorColor by animateColorAsState(
+        if (selected) colors.indicator else colors.indicator.copy(alpha = 0f), label = "nav_indicator_c"
+    )
+    val iconColor by animateColorAsState(
+        if (selected) colors.selectedIcon else colors.unselected, label = "nav_icon_c"
+    )
+    val textColor by animateColorAsState(
+        if (selected) colors.selectedText else colors.unselected, label = "nav_text_c"
+    )
+    // Small bounce of the icon when it becomes selected.
+    val scale = remember { androidx.compose.animation.core.Animatable(1f) }
+    LaunchedEffect(selected) {
+        if (selected) {
+            scale.snapTo(0.8f)
+            scale.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMedium))
+        }
+    }
+    val interaction = remember { MutableInteractionSource() }
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+        modifier = Modifier
+            .selectable(
+                selected = selected,
+                onClick = onClick,
+                role = Role.Tab,
+                interactionSource = interaction,
+                indication = null
+            )
+            .defaultMinSize(minWidth = 72.dp, minHeight = 64.dp)
+            .padding(vertical = 6.dp)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(width = indicatorWidth, height = 32.dp)
+                .clip(CircleShape)
+                .background(indicatorColor)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = iconColor,
+                modifier = Modifier.graphicsLayer {
+                    scaleX = scale.value
+                    scaleY = scale.value
+                }
+            )
+        }
+        Label(
+            text = label,
+            color = textColor,
+            style = AppTheme.typography.label3,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+        )
     }
 }

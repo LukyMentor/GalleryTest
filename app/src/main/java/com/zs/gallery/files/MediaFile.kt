@@ -75,6 +75,7 @@ fun MediaFile(
     focused: Boolean,
     checked: Int, // -1 for show selected circle; pass 0 for unchecked, 1 for checked.
     modifier: Modifier = Modifier,
+    sizeLabel: String? = null,
 ) {
     // Deterministic per item (was random on every recomposition, making tiles flicker shade).
     val elevation = if (value.id % 2L == 0L) 0.5.dp else 1.dp
@@ -112,6 +113,19 @@ fun MediaFile(
                 }
                 .aspectRatio(1.0f),
         )
+        // File size (shown when the grid is ordered by size).
+        if (sizeLabel != null)
+            Label(
+                text = sizeLabel,
+                fontWeight = FontWeight.Bold,
+                style = AppTheme.typography.label3,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(4.dp)
+                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 5.dp, vertical = 1.dp)
+            )
         if (!value.isImage)
             Row(
                 modifier = Modifier

@@ -54,6 +54,9 @@ import androidx.lifecycle.viewModelScope
 import com.zs.core.common.PathUtils
 import com.zs.core.store.MediaFile
 import com.zs.core.store.sortedForTimeline
+import com.zs.gallery.files.MediaFilter
+import com.zs.gallery.files.MediaOrder
+import androidx.compose.runtime.snapshotFlow
 import com.zs.core.store.MediaProvider
 import com.zs.gallery.MainActivity
 import com.zs.gallery.R
@@ -121,6 +124,44 @@ class FilesViewModel(
         }
 
     override var data: Mapped<MediaFile>? by mutableStateOf(null)
+
+    override val supportsFilters: Boolean = source != SOURCE_BIN
+    override var filter: MediaFilter by mutableStateOf(MediaFilter.ALL)
+    override var order: MediaOrder by mutableStateOf(MediaOrder.NEWEST)
+    override var groupedBySize: Boolean by mutableStateOf(false)
+        private set
+
+    /** Applies the filter and order to the freshly loaded list. */
+    private fun arrange(values: List<MediaFile>, filter: MediaFilter, order: MediaOrder): List<MediaFile> {
+        if (source == SOURCE_BIN) return values
+        val filtered = when (filter) {
+            MediaFilter.ALL -> values
+            MediaFilter.PHOTOS -> values.filter { it.isImage }
+            MediaFilter.VIDEOS -> values.filter { !it.isImage }
+            MediaFilter.SCREENSHOTS -> values.filter {
+                it.path.contains("/Screenshots/", ignoreCase = true) ||
+                        it.name.startsWith("Screenshot", ignoreCase = true)
+            }
+        }
+        return when (order) {
+            MediaOrder.NEWEST -> filtered.sortedForTimeline()
+            MediaOrder.OLDEST -> filtered.sortedBy { it.timelineDate }
+            MediaOrder.LARGEST -> filtered.sortedByDescending { it.size }
+        }
+    }
+
+    /** Size groups used when ordering by size (largest first). */
+    private fun sizeGroup(bytes: Long): String {
+        val mb = bytes / (1024.0 * 1024.0)
+        return when {
+            mb >= 100 -> "Over 100 MB"
+            mb >= 25 -> "25 – 100 MB"
+            mb >= 10 -> "10 – 25 MB"
+            mb >= 5 -> "5 – 10 MB"
+            mb >= 1 -> "1 – 5 MB"
+            else -> "Under 1 MB"
+        }
+    }
 
     // Represents the
     // Selection is kept in a hash set: membership checks are O(1), which matters for drag-select
@@ -298,7 +339,12 @@ class FilesViewModel(
      * cheap arithmetic per item and the (expensive, locale-aware) label is formatted only once per
      * day instead of once per photo.
      */
-    private fun group(values: List<MediaFile>): Mapped<MediaFile> {
+    private fun group(values: List<MediaFile>, order: MediaOrder): Mapped<MediaFile> {
+        if (source != SOURCE_BIN && order == MediaOrder.LARGEST) {
+            val sized = LinkedHashMap<CharSequence, MutableList<MediaFile>>()
+            for (file in values) sized.getOrPut(sizeGroup(file.size)) { ArrayList() } += file
+            return sized
+        }
         if (source == SOURCE_BIN)
             return values.groupBy { (it.expires - System.currentTimeMillis()).milliseconds.inWholeDays }
                 // Transform the keys to user-friendly labels
@@ -333,7 +379,10 @@ class FilesViewModel(
         return result
     }
 
-    val onRequestUpdate: suspend (Mapped<MediaFile>) -> Unit = { values -> data = values }
+    val onRequestUpdate: suspend (Pair<Mapped<MediaFile>, Boolean>) -> Unit = { (values, bySize) ->
+        groupedBySize = bySize
+        data = values
+    }
 
     init {
         provider.observer(MediaProvider.EXTERNAL_CONTENT_URI)
@@ -370,10 +419,11 @@ class FilesViewModel(
             }
             // Query + sorting + grouping happen on a background thread; only the result touches
             // the UI. The sorted list is also shared with the viewer so it opens instantly.
-            .map { values ->
-                val sorted = if (source == SOURCE_BIN) values else values.sortedForTimeline()
-                MediaListCache.put(source, arg, sorted)
-                group(sorted)
+            .combine(snapshotFlow { filter to order }) { values, (filter, order) ->
+                val arranged = arrange(values, filter, order)
+                // Same list (and order) the viewer swipes through.
+                MediaListCache.put(source, arg, arranged)
+                group(arranged, order) to (source != SOURCE_BIN && order == MediaOrder.LARGEST)
             }
             .flowOn(Dispatchers.Default)
             .onEach(onRequestUpdate)

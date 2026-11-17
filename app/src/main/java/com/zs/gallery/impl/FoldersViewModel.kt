@@ -69,8 +69,11 @@ class FoldersViewModel(provider: MediaProvider) : KoinViewModel(), FoldersViewSt
             }
         }
     )
-    override var filter: Filter by mutableStateOf(preferences[filterKey] ?: (true to ORDER_BY_NAME))
-    override val orders: List<Action> = listOf(ORDER_BY_NONE, ORDER_BY_DATE_MODIFIED, ORDER_BY_NAME)
+    // "None" is no longer offered (it also disabled the direction button); fall back to name.
+    override var filter: Filter by mutableStateOf(
+        preferences[filterKey]?.takeIf { it.second != ORDER_BY_NONE } ?: (true to ORDER_BY_NAME)
+    )
+    override val orders: List<Action> = listOf(ORDER_BY_NAME, ORDER_BY_DATE_MODIFIED)
 
     override fun filter(ascending: Boolean, order: Action) {
         if (ascending == filter.first && order == filter.second) return

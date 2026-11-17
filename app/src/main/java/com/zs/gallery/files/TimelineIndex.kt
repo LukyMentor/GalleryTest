@@ -18,12 +18,23 @@ import java.util.Calendar
  * Maps between the lazy-grid item indices of the timeline and "rows" (grid lines), and knows the
  * month of every section. Used by the fast scroller and drag-to-select.
  *
- * Layout assumption (must match `Files`): each section emits a full-width header, its media items,
- * then a full-width spacer — i.e. `1 + size + 1` lazy items.
+ * Layout assumption (must match `Files`): [leading] full-width items first (e.g. the filter bar),
+ * then for each section a full-width header, its media items and a full-width spacer — i.e.
+ * `1 + size + 1` lazy items.
+ *
+ * @param byDate whether sections are dates (scroller shows months/years) or something else, like
+ *   size groups (scroller shows the section names).
  */
-internal class TimelineIndex(data: Mapped<MediaFile>) {
+internal class TimelineIndex(
+    data: Mapped<MediaFile>,
+    val byDate: Boolean = true,
+    val leading: Int = 0,
+) {
 
     val sections = data.size
+
+    /** Section titles as shown in the grid. */
+    val labels: Array<String> = data.keys.map { it.toString() }.toTypedArray()
 
     /** Lazy index of each section's header. */
     val startIndex = IntArray(sections)
@@ -43,7 +54,7 @@ internal class TimelineIndex(data: Mapped<MediaFile>) {
 
     init {
         val calendar = Calendar.getInstance()
-        var lazyIndex = 0
+        var lazyIndex = leading
         var total = 0
         var i = 0
         for ((_, items) in data) {
@@ -86,7 +97,7 @@ internal class TimelineIndex(data: Mapped<MediaFile>) {
         val total: Int
 
         init {
-            var row = 0
+            var row = leading
             for (s in 0 until sections) {
                 rowStart[s] = row
                 row += rowsOf(s)
@@ -100,7 +111,7 @@ internal class TimelineIndex(data: Mapped<MediaFile>) {
 
         /** Grid line of lazy item [lazyIndex]. */
         fun rowOf(lazyIndex: Int): Int {
-            if (sections == 0) return 0
+            if (sections == 0 || lazyIndex < leading) return lazyIndex.coerceAtLeast(0)
             val s = sectionOf(lazyIndex)
             val offset = lazyIndex - startIndex[s]
             return rowStart[s] + when {
@@ -112,7 +123,7 @@ internal class TimelineIndex(data: Mapped<MediaFile>) {
 
         /** First lazy item placed on grid line [row]. */
         fun indexOfRow(row: Int): Int {
-            if (sections == 0) return 0
+            if (sections == 0 || row < leading) return row.coerceAtLeast(0)
             // last section whose first row <= row
             var lo = 0
             var hi = sections - 1

@@ -136,6 +136,14 @@ private const val EVENT_IMMERSIVE_VIEW = 2
 
 private val DEFAULT_ZOOM_SPECS = ZoomSpec(5f)
 
+/** Image types Android can decode in tiles (needed for the quick-preview path). */
+private val TILED_FORMATS = setOf(
+    "image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic", "image/heif"
+)
+
+/** Size of the quick preview (MediaStore thumbnail) shown until tiles of the original load. */
+private const val PREVIEW_SIZE = 512
+
 // FixMe - This is not the best solution; find another.
 private val ZoomableState.isZoomedOut get() = (zoomFraction ?: 0f) <= 0.0001f
 
@@ -278,11 +286,23 @@ private fun Carousel(
                 }
                 ZoomableAsyncImage(
                     model = remember(item.id) {
+                        // Formats that support tiled (region) decoding: the small MediaStore
+                        // thumbnail is enough as telephoto's preview, because the sharp detail
+                        // comes from tiles of the original file anyway. That makes the photo
+                        // zoomable almost immediately instead of after a full decode.
+                        val tiled = item.mimeType in TILED_FORMATS
                         ImageRequest(ctx)
                             .data(MediaProvider.buildContentUri(item.id))
                             .placeholderMemoryCacheKey(thumbnailCacheKey(item.id))
-                            // Always the real image, never the MediaStore thumbnail.
-                            .preferCachedThumbnail(false)
+                            .apply {
+                                if (tiled) {
+                                    size(PREVIEW_SIZE)
+                                    preferCachedThumbnail(true)
+                                } else {
+                                    // GIFs etc.: show the real image.
+                                    preferCachedThumbnail(false)
+                                }
+                            }
                             .build()
                     },
                     contentDescription = item.name,
@@ -402,7 +422,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
     val isLoading by remember { derivedStateOf { viewState.data.isEmpty() } }
     val ctx = LocalContext.current
     Scaffold(
-        fabPosition = if (compact) FabPosition.Center else FabPosition.End,
+        fabPosition = FabPosition.End,
         contentColor = Color.SignalWhite,
         // Black backdrop that fades out while the photo is dragged down (read in draw phase).
         containerColor = Color.Transparent,
@@ -434,22 +454,14 @@ fun MediaViewer(viewState: MediaViewerViewState) {
         },
         // FloatingActionMenu
         floatingActionButton = {
-            val actions = viewState.actions
-            FloatingActionMenu(
+            // Large round buttons on the right, like Aves (and like the app's navigation bar).
+            ViewerActions(
                 visible = !immersive && !isLoading && !isDragging && !sheetOpen,
-                background = colors.background(surface, luminance = -1f),
+                actions = viewState.actions,
+                onAction = { viewState.onPerformAction(it, ctx.findActivity()) },
                 modifier = Modifier.windowInsetsPadding(
                     WindowInsets.systemBars.only(WindowInsetsSides.Bottom + WindowInsetsSides.End)
-                ),
-                border = colors.shine,
-                content = {
-                    OverflowMenu(
-                        actions,
-                        onItemClicked = { viewState.onPerformAction(it, ctx.findActivity()) },
-                        collapsed = 3,
-                        compact = true
-                    )
-                }
+                )
             )
         },
         // Carousal

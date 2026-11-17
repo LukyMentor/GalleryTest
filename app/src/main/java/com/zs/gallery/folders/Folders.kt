@@ -18,6 +18,19 @@
 
 package com.zs.gallery.folders
 
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.ArrowDownward
+import com.zs.compose.theme.IconButton
+import com.zs.gallery.files.FilterChip
+
 import android.os.Build
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -124,56 +137,60 @@ fun Folders(viewState: FoldersViewState) {
             val state = rememberLazyGridState()
             //
             val content: LazyGridScope.() -> Unit = content@{
-                /// Shortcut Row
-                // First row represents shortcuts
-                item(contentType = "shortcut") {
-                    Shortcut(
-                        Icons.Outlined.HotelClass,
-                        stringResource(R.string.favourites),
-                        onClick = { navController.navigate(RouteLiked()) }
-                    )
+                // Quick access: favourites and the recycle bin, side by side, full width.
+                item(key = "quick_access", contentType = "quick_access", span = fullLineSpan) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(CP.medium),
+                        modifier = Modifier.padding(top = CP.small)
+                    ) {
+                        QuickAccess(
+                            Icons.Outlined.HotelClass,
+                            stringResource(R.string.favourites),
+                            onClick = { navController.navigate(RouteLiked()) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        // Only available if R and above
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+                            QuickAccess(
+                                Icons.Outlined.Recycling,
+                                stringResource(R.string.recycle_bin),
+                                onClick = { navController.navigate(RouteBin()) },
+                                modifier = Modifier.weight(1f)
+                            )
+                    }
                 }
-                // Only available if R and above
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-                    item(contentType = "shortcut") {
-                        Shortcut(
-                            Icons.Outlined.Recycling,
-                            stringResource(R.string.recycle_bin),
-                            onClick = { navController.navigate(RouteBin()) },
+                // "On this device" with the sort controls on the same line.
+                item(key = "device_header", contentType = "device_header", span = fullLineSpan) {
+                    val (ascending, order) = viewState.filter
+                    val byName = order.id == "name"
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(top = CP.large, bottom = CP.small)
+                    ) {
+                        Header(
+                            "On this device",
+                            Modifier
+                                .weight(1f)
+                                .padding(horizontal = 6.dp),
+                            color = AppTheme.colors.accent,
+                            style = AppTheme.typography.label2
+                        )
+                        val nameOrder = viewState.orders.first { it.id == "name" }
+                        val dateOrder = viewState.orders.first { it.id != "name" }
+                        FilterChip("Name", byName) { viewState.filter(ascending, nameOrder) }
+                        FilterChip("Recent", !byName) { viewState.filter(ascending, dateOrder) }
+                        // Direction: A→Z / Z→A, or oldest / newest first.
+                        IconButton(
+                            icon = if (ascending) Icons.Outlined.ArrowUpward else Icons.Outlined.ArrowDownward,
+                            contentDescription = if (ascending) "Ascending" else "Descending",
+                            onClick = { viewState.filter(!ascending, order) }
                         )
                     }
-                // Local Devices
-                item(contentType = "simple_header", span = fullLineSpan) {
-                    Header(
-                        "On this device",
-                        Modifier.padding(horizontal = 6.dp, vertical = CP.normal),
-                        color = AppTheme.colors.accent,
-                        style = AppTheme.typography.label2
-                    )
                 }
                 // show from here only if available.
                 // else emit error | empty | Loading
                 val data = emit(data) ?: return@content
-                // only show other content; if data is available.
-                // Filters: Display the filters section.
-                item(
-                    "folder_filters",
-                    contentType = "filters",
-                    span = fullLineSpan,
-                    content = {
-                        Filters(
-                            viewState.filter,
-                            viewState.orders,
-                            modifier = Modifier.padding(bottom = CP.medium),
-                            onRequest = {
-                                when {
-                                    it == null -> viewState.filter(!viewState.filter.first)
-                                    else -> viewState.filter(order = it)
-                                }
-                            }
-                        )
-                    }
-                )
                 // Actual content
                 for ((header, items) in data) {
                     if (header.isNotEmpty())
@@ -229,4 +246,29 @@ fun Folders(viewState: FoldersViewState) {
             )
         }
     )
+}
+
+/** A full-width quick-access card (icon + title), used for Favourites and the Recycle Bin. */
+@Composable
+private fun QuickAccess(
+    icon: ImageVector,
+    title: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AppTheme.colors
+    val shape = RoundedCornerShape(20.dp)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = modifier
+            .clip(shape)
+            .background(colors.background(4.dp))
+            .border(1.dp, colors.onBackground.copy(alpha = 0.08f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 18.dp)
+    ) {
+        Icon(icon, contentDescription = null, tint = colors.accent)
+        Label(title, style = AppTheme.typography.title3)
+    }
 }
