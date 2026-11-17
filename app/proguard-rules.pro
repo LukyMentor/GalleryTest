@@ -23,5 +23,3 @@
 -keepnames class * implements com.zs.gallery.common.Route
 -keepnames class * implements com.zs.gallery.common.SafeArgs
 -dontwarn com.google.android.gms.common.annotation.NoNullnessRewrite
-# osmdroid (Map tab)
--dontwarn org.osmdroid.**

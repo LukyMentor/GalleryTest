@@ -98,11 +98,15 @@ fun Modifier.dragToDismiss(
         try {
             while (true) {
                 val event = awaitPointerEvent()
-                // A second finger means pinch-zoom: give up and let the zoom handler work.
-                if (event.changes.count { it.pressed } > 1) break
+                // A second finger *before* the drag starts means pinch-zoom: let zoom handle it.
+                // Once dragging, extra touches are ignored (e.g. the palm resting on a curved
+                // screen edge during a slow drag used to cancel it and snap the photo back).
+                if (!dragging && event.changes.count { it.pressed } > 1) break
                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
                 if (!change.pressed) {
-                    released = true
+                    // A real lift has a new timestamp; Compose's synthetic "cancel" repeats the
+                    // previous one. Only a real lift may close the photo.
+                    released = change.uptimeMillis != change.previousUptimeMillis
                     break
                 }
                 // Someone else (pager / zoom) claimed this gesture.

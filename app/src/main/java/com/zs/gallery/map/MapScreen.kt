@@ -40,7 +40,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -59,7 +58,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import com.zs.compose.theme.AppTheme
@@ -74,103 +72,9 @@ import com.zs.gallery.common.compose.LocalNavController
 import com.zs.gallery.files.RouteFiles
 import com.zs.gallery.files.thumbnailCacheKey
 import com.zs.gallery.viewer.RouteViewer
-import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.XYTileSource
-import org.osmdroid.util.BoundingBox
-import org.osmdroid.util.GeoPoint
-import org.osmdroid.views.CustomZoomButtonsController
-import org.osmdroid.views.MapView
-import java.io.File
 
 /** The "Map" tab: where photos were taken. */
 object RouteMap : Route
-
-// CARTO basemaps (OpenStreetMap data), retina tiles. Light "Voyager" and "Dark Matter".
-private val LightTiles = XYTileSource(
-    "CartoVoyager", 1, 19, 256, "@2x.png",
-    arrayOf(
-        "https://a.basemaps.cartocdn.com/rastertiles/voyager/",
-        "https://b.basemaps.cartocdn.com/rastertiles/voyager/",
-        "https://c.basemaps.cartocdn.com/rastertiles/voyager/",
-    ),
-    "© OpenStreetMap contributors © CARTO"
-)
-private val DarkTiles = XYTileSource(
-    "CartoDarkMatter", 1, 19, 256, "@2x.png",
-    arrayOf(
-        "https://a.basemaps.cartocdn.com/dark_all/",
-        "https://b.basemaps.cartocdn.com/dark_all/",
-        "https://c.basemaps.cartocdn.com/dark_all/",
-    ),
-    "© OpenStreetMap contributors © CARTO"
-)
-
-// Fallback: the standard OpenStreetMap tiles (used if CARTO can't be reached).
-private val OsmTiles = XYTileSource(
-    "OpenStreetMap", 0, 19, 256, ".png",
-    arrayOf("https://tile.openstreetmap.org/"),
-    "© OpenStreetMap contributors"
-)
-
-/** Identifies the app to the tile servers (generic user agents get blocked). */
-private const val USER_AGENT = "MGallery/1.0 (Android; com.lukymentor.gallery; personal photo map)"
-
-/**
- * Tries to download one tile; returns null if it worked, otherwise a short reason
- * ("HTTP 403", "UnknownHostException", ...). Used to pick a working server and to tell the user
- * why the map is empty instead of silently showing nothing.
- */
-private fun probe(url: String): String? = try {
-    val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-    connection.setRequestProperty("User-Agent", USER_AGENT)
-    connection.connectTimeout = 8000
-    connection.readTimeout = 8000
-    val code = connection.responseCode
-    connection.disconnect()
-    if (code in 200..299) null else "HTTP $code"
-} catch (e: Exception) {
-    e.javaClass.simpleName + (e.message?.let { ": $it" } ?: "")
-}
-
-/**
- * Asks Android whether this app's network access is blocked (per-app data/Wi-Fi switch,
- * firewall, VPN lockdown...). Null if unknown.
- */
-private suspend fun isNetworkBlockedForApp(context: android.content.Context): Boolean? {
-    val cm = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return null
-    return kotlinx.coroutines.withTimeoutOrNull(2000) {
-        kotlinx.coroutines.suspendCancellableCoroutine { cont ->
-            val callback = object : android.net.ConnectivityManager.NetworkCallback() {
-                override fun onBlockedStatusChanged(network: android.net.Network, blocked: Boolean) {
-                    if (cont.isActive) cont.resumeWith(Result.success(blocked))
-                }
-            }
-            try {
-                cm.registerDefaultNetworkCallback(callback)
-            } catch (e: Exception) {
-                cont.resumeWith(Result.success(null))
-                return@suspendCancellableCoroutine
-            }
-            cont.invokeOnCancellation { runCatching { cm.unregisterNetworkCallback(callback) } }
-            // Unregister once we have an answer.
-            cont.context[kotlinx.coroutines.Job]?.invokeOnCompletion {
-                runCatching { cm.unregisterNetworkCallback(callback) }
-            }
-        }
-    }
-}
-
-/** Turns probe failures into something a person can act on. */
-private suspend fun explain(context: android.content.Context, carto: String, osm: String): String {
-    val dnsFailure = carto.startsWith("UnknownHost") && osm.startsWith("UnknownHost")
-    if (!dnsFailure) return "Map can't load (CARTO: $carto · OSM: $osm). Tap to retry."
-    val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
-    if (cm?.activeNetwork == null) return "No internet connection. Tap to retry."
-    return if (isNetworkBlockedForApp(context) == true)
-        "Android is blocking internet for M Gallery. Allow it in App info → Mobile data & Wi-Fi, then tap to retry."
-    else
-        "M Gallery can't look up the map servers. Check the app's network access, a firewall/ad-blocker app or Private DNS. Tap to retry."
-}
 
 @Composable
 fun MapScreen() {
@@ -194,96 +98,17 @@ fun MapScreen() {
     val progress by PhotoLocations.progress.collectAsState()
     var selected by remember { mutableStateOf<PhotoCluster?>(null) }
 
-    // The map itself (an Android View).
-    val accent = colors.accent.toArgb()
-    val overlay = remember { PhotoClusterOverlay(context, accent) { selected = it } }
-    var fitted by remember { mutableStateOf(false) }
-    // Which tile server works (checked once per visit): CARTO first, OpenStreetMap as fallback.
-    var useOsm by remember { mutableStateOf(false) }
-    var tileError by remember { mutableStateOf<String?>(null) }
-    var attempt by remember { mutableStateOf(0) }
-    LaunchedEffect(attempt) {
-        tileError = null
-        val carto = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            probe("https://a.basemaps.cartocdn.com/rastertiles/voyager/2/2/1@2x.png")
-        }
-        if (carto == null) return@LaunchedEffect
-        val osm = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            probe("https://tile.openstreetmap.org/2/2/1.png")
-        }
-        if (osm == null) useOsm = true
-        else tileError = explain(context, carto, osm)
-    }
-    val mapHolder = remember { arrayOfNulls<MapView>(1) }
-
     Box(Modifier.fillMaxSize()) {
-        AndroidView(
-            // Own render layer: tiles arrive in the background and invalidate the map view; with
-            // its own layer that redraw never depends on the blurred bars' recording.
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(),
-            factory = { ctx ->
-                Configuration.getInstance().apply {
-                    load(ctx, ctx.getSharedPreferences("osmdroid", android.content.Context.MODE_PRIVATE))
-                    userAgentValue = USER_AGENT
-                    val base = File(ctx.cacheDir, "osmdroid").apply { mkdirs() }
-                    val tiles = File(base, "tiles").apply { mkdirs() }
-                    osmdroidBasePath = base
-                    osmdroidTileCache = tiles
-                }
-                MapView(ctx).apply {
-                    setMultiTouchControls(true)
-                    zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
-                    setTilesScaledToDpi(true)
-                    setMinZoomLevel(2.0)
-                    setMaxZoomLevel(19.0)
-                    setHorizontalMapRepetitionEnabled(false)
-                    setVerticalMapRepetitionEnabled(false)
-                    setScrollableAreaLimitLatitude(
-                        MapView.getTileSystem().maxLatitude,
-                        MapView.getTileSystem().minLatitude,
-                        0
-                    )
-                    controller.setZoom(3.0)
-                    overlays.add(overlay)
-                    mapHolder[0] = this
-                }
-            },
-            update = { map ->
-                // Only switch tiles when the theme actually changed: setTileSource() wipes the
-                // tile cache and pending downloads, and this runs on every recomposition (e.g. each
-                // time the photo scan publishes progress) - that's why the map stayed empty.
-                val tiles = when {
-                    useOsm -> OsmTiles
-                    dark -> DarkTiles
-                    else -> LightTiles
-                }
-                if (map.tileProvider.tileSource !== tiles) map.setTileSource(tiles)
-                overlay.photos = photos
-                // First time we have photos: show all of them.
-                if (!fitted && photos.isNotEmpty()) {
-                    fitted = true
-                    val points = photos.map { GeoPoint(it.latitude, it.longitude) }
-                    map.post {
-                        if (points.size == 1) {
-                            map.controller.setZoom(12.0)
-                            map.controller.setCenter(points[0])
-                        } else {
-                            val box = BoundingBox.fromGeoPointsSafe(points)
-                            map.zoomToBoundingBox(box.increaseByScale(1.3f), false, 64)
-                        }
-                    }
-                }
-                map.invalidate()
-            }
+        // Offline map bundled in the app: no internet, no API key.
+        WorldMap(
+            photos = photos,
+            dark = dark,
+            accent = colors.accent,
+            onClusterTap = { selected = it },
+            modifier = Modifier.fillMaxSize()
         )
-        // Release the map's tile threads/caches when leaving the tab.
-        DisposableEffect(Unit) {
-            onDispose { mapHolder[0]?.onDetach() }
-        }
 
-        // Top: title + scan progress + attribution.
+        // Top: title + scan progress.
         Column(
             modifier = Modifier
                 .windowInsetsPadding(WindowInsets.statusBars)
@@ -295,29 +120,19 @@ fun MapScreen() {
                 modifier = Modifier
                     .shadow(6.dp, RoundedCornerShape(50))
                     .background(colors.background(2.dp), RoundedCornerShape(50))
-                    .clip(RoundedCornerShape(50))
-                    .clickable(enabled = tileError != null) { attempt++ }
                     .padding(horizontal = 14.dp, vertical = 8.dp)
             ) {
                 Icon(Icons.Outlined.Public, contentDescription = null, tint = colors.accent)
                 val (done, total) = progress
                 Label(
                     text = when {
-                        tileError != null -> tileError!!
                         !granted -> "Map"
                         scanning && total > 0 -> "Finding places… $done / $total"
                         else -> "${photos.size} photos with a location"
                     },
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 5
+                    fontWeight = FontWeight.Medium
                 )
             }
-            Label(
-                text = if (useOsm) "© OpenStreetMap contributors" else "© OpenStreetMap contributors © CARTO",
-                style = AppTheme.typography.label3.copy(fontSize = 10.sp),
-                color = if (dark) Color.White.copy(0.6f) else Color.Black.copy(0.6f),
-                modifier = Modifier.padding(start = 8.dp, top = 6.dp)
-            )
         }
 
         // Permission explanation if it was refused.
