@@ -119,6 +119,7 @@ import com.zs.gallery.common.compose.LocalSystemFacade
 import com.zs.gallery.common.compose.background
 import com.zs.gallery.common.compose.composable
 import com.zs.gallery.map.MapScreen
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -445,6 +446,7 @@ private fun NavigationBar(
     contentColor: Color,
     navController: NavController,
     modifier: Modifier = Modifier,
+    tab: String? = null,
 ) {
     // Get the current theme colors
     val colors = AppTheme.colors
@@ -459,12 +461,10 @@ private fun NavigationBar(
             selectedText = if (onAccentBar) contentColor else colors.accent,
             unselected = if (onAccentBar) colors.onAccent else colors.onBackground,
         )
-        val currentTab by navController.primary
-        // Keep showing the last tab while on other screens (e.g. a photo), so coming back
-        // doesn't "re-select" it with an animation; animations are only for real tab switches.
-        val lastTab = remember { arrayOfNulls<String>(1) }
-        if (currentTab != null) lastTab[0] = currentTab
-        val primary = lastTab[0]
+        // The tab comes from the screen above, which already knows it on the very first frame.
+        // (Reading the back stack here starts as "nothing selected" whenever the bar reappears,
+        // e.g. after closing a photo, which made the selection animate in again.)
+        val primary = tab
 
         // Photos (timeline)
         AnimatedNavItem(
@@ -601,6 +601,7 @@ fun Home(
                     if (useAccent) colors.onAccent else colors.onBackground,
                     navController,
                     Modifier.renderInSharedTransitionScopeOverlay(0.3f),
+                    tab = primary,
                 )
             },
             // Display the main content of the app using the NavGraph composable
@@ -618,7 +619,9 @@ fun Home(
                     enterTransition = {
                         val from = initialState.tabIndex
                         val to = targetState.tabIndex
-                        if (from >= 0 && to >= 0 && from != to)
+                        // Back from a photo: the grid is simply there (the photo flies/fades on top).
+                        if (initialState.destination.domain == RouteViewer.domain) EnterTransition.None
+                        else if (from >= 0 && to >= 0 && from != to)
                             slideInHorizontally(TabSlideSpec) { w -> if (to > from) w / 5 else -w / 5 } +
                                     fadeIn(TabFadeSpec)
                         else scaleIn(motion.slowSpatialSpec(), 0.98f) + fadeIn(motion.slowEffectsSpec())
@@ -626,7 +629,8 @@ fun Home(
                     exitTransition = {
                         val from = initialState.tabIndex
                         val to = targetState.tabIndex
-                        if (from >= 0 && to >= 0 && from != to)
+                        if (initialState.destination.domain == RouteViewer.domain) fadeOut(tween(180))
+                        else if (from >= 0 && to >= 0 && from != to)
                             slideOutHorizontally(TabSlideSpec) { w -> if (to > from) -w / 5 else w / 5 } +
                                     fadeOut(TabFadeSpec)
                         else fadeOut(motion.slowEffectsSpec())
