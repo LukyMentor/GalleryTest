@@ -216,21 +216,12 @@ internal class MediaProviderImpl(context: Context) : MediaProvider {
         if (activity is ComponentActivity) {
             // If the activity is a ComponentActivity, use Activity Result
             // APIs for detailed feedback.
-            // Count items before deletion (including trashed)
-            val before = count(1)
-            // Launch the delete request and get the result.
-            val result = activity.launchForResult(
-                request.intentSender
-            )
-            // Handle the result of the deletion request.
+            // Launch the request (no counting the whole library before/after: slow, and it
+            // didn't even change for trashing, which reported a failure).
+            val result = activity.launchForResult(request.intentSender)
             // Deletion was canceled by the user
             if (Activity.RESULT_CANCELED == result.resultCode) return -3
-            // Count items after deletion (including trashed)
-            val after = count(1)
-            // Log for debugging if result is unexpected
-            Log.d(TAG, "trash: before: $before, after: $after")
-            // Return the number of deleted items
-            if (Activity.RESULT_OK == result.resultCode) return after - before
+            if (Activity.RESULT_OK == result.resultCode) return uri.size
             // Deletion failed for an unknown reason
             return -1
         }

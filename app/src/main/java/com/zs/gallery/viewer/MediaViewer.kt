@@ -850,17 +850,23 @@ internal class Deleter(private val scope: CoroutineScope) {
         fading = f
         scope.launch {
             val spec = tween<Float>(durationMillis = 180, easing = FastOutSlowInEasing)
-            launch { f.scale.animateTo(0.88f, spec) }
-            f.alpha.animateTo(0f, spec)
-            hidden += id
-            // Was a system "move to trash?" dialog shown (the app gets paused)?
+            // Was a system "move to trash?" screen shown (the app gets paused)?
             var paused = false
             val owner = activity as? androidx.lifecycle.LifecycleOwner
             val observer = androidx.lifecycle.LifecycleEventObserver { _, e ->
                 if (e == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) paused = true
             }
             owner?.lifecycle?.addObserver(observer)
+            // Delete and fade at the same time: Android's (sometimes invisible) confirmation
+            // screen flickers the display while it opens and closes; that now happens while the
+            // photo is already fading instead of before it.
+            val fadeOut = launch {
+                launch { f.scale.animateTo(0.88f, spec) }
+                f.alpha.animateTo(0f, spec)
+                hidden += id
+            }
             perform()
+            fadeOut.join()
             // Gone within a moment (or a moment after the dialog closed)?
             var gone = false
             var deadline = System.currentTimeMillis() + 3000
