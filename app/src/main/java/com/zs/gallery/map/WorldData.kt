@@ -27,6 +27,7 @@ internal class WorldData(
     val countries: List<Country>,
     val lakes: Shape,
     val cities: List<City>,
+    val countryLabels: List<CountryLabel>,
 ) {
     /** A closed polygon ring with its bounding box. */
     class Ring(
@@ -67,6 +68,9 @@ internal class WorldData(
 
     class City(val x: Float, val y: Float, val minZoom: Int, val name: String)
 
+    /** A country name, shown between [minZoom] and [maxZoom]. */
+    class CountryLabel(val x: Float, val y: Float, val minZoom: Int, val maxZoom: Int, val name: String)
+
     companion object {
         @Volatile
         private var cached: WorldData? = null
@@ -82,7 +86,7 @@ internal class WorldData(
         private fun parse(bytes: ByteArray): WorldData {
             val b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
             val magic = ByteArray(4).also { b.get(it) }
-            check(String(magic) == "MGW2") { "Unknown world map format" }
+            check(String(magic) == "MGW3") { "Unknown world map format" }
 
             fun rings(): List<Ring> {
                 val count = b.int
@@ -111,7 +115,16 @@ internal class WorldData(
                 val name = ByteArray(len).also { b.get(it) }
                 City(x, y, minZoom, String(name, Charsets.UTF_8))
             }
-            return WorldData(countries, lakes, cities)
+            val labels = List(b.int) {
+                val x = b.float
+                val y = b.float
+                val minZoom = b.get().toInt() and 0xFF
+                val maxZoom = b.get().toInt() and 0xFF
+                val len = b.short.toInt() and 0xFFFF
+                val name = ByteArray(len).also { b.get(it) }
+                CountryLabel(x, y, minZoom, maxZoom, String(name, Charsets.UTF_8))
+            }
+            return WorldData(countries, lakes, cities, labels)
         }
     }
 }

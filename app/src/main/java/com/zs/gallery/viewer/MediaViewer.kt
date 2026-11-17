@@ -113,6 +113,7 @@ import me.saket.telephoto.zoomable.zoomable
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.animation.core.Animatable
@@ -178,11 +179,11 @@ private class DismissController(
     var screenHeight = 0f
 
     /**
-     * The one and only distance after which letting go closes the photo (~a fifth of the
-     * screen). Speed doesn't matter, so it behaves the same with or without system animations.
+     * Distance after which letting go always closes the photo: ~1/9 of the screen (a short pull,
+     * like Google Photos). A quick downward flick closes it even before that, see [end].
      */
     private val threshold: Float
-        get() = maxOf((if (screenHeight > 0f) screenHeight else 2000f) * 0.2f, 120f * density)
+        get() = maxOf((if (screenHeight > 0f) screenHeight else 2000f) * 0.11f, 72f * density)
 
     /** Whether letting go now would close; a light haptic tick marks crossing the line. */
     private var armed = false
@@ -201,7 +202,10 @@ private class DismissController(
         if (dismissed) return
         val height = if (screenHeight > 0f) screenHeight else 2000f
         armed = false
-        if (released && anim.value >= threshold) {
+        // A flick = still moving down fast when the finger lifts (after a small pull, so a
+        // tap-and-wobble doesn't count). Works the same with system animations turned off.
+        val flick = velocityY > 650f * density && anim.value > 20f * density
+        if (released && (anim.value >= threshold || flick)) {
             dismissed = true
             scope.launch {
                 // Keep moving the way it was flung, fading out with the background.
@@ -281,17 +285,16 @@ private fun Modifier.closeGestures(
 private fun Carousel(
     viewState: MediaViewerViewState,
     onRequest: (event: Int) -> Unit,
-    dismissOffset: DismissController,
     sharedElementEnabled: Boolean,
     onReady: () -> Unit,
-    sheet: DetailsSheetState,
+    zoomHolder: MutableState<ZoomableState?>,
     modifier: Modifier = Modifier,
 ) {
     val data = viewState.data
     val state = PagerState(initialPage = viewState.index, pageCount = { data.size })
     val scope = rememberCoroutineScope()
     // Every image page owns its zoom state; this points at the one currently in focus.
-    var focusedZoom by remember { mutableStateOf<ZoomableState?>(null) }
+    var focusedZoom by zoomHolder
     // Boolean only, so the pager recomposes when zoomed-in/out flips, not on every zoom frame.
     val zoomedOut by remember { derivedStateOf { focusedZoom?.isZoomedOut ?: true } }
     // TODO - Remove this once inBuilt Video Player is available.
@@ -326,12 +329,7 @@ private fun Carousel(
         state = state,
         key = { data[it].id },
         pageSpacing = ContentPadding.normal,
-        modifier = modifier.closeGestures(
-            enabled = { focusedZoom?.isZoomedOut ?: true },
-            dismiss = dismissOffset,
-            onClose = { onRequest(EVENT_BACK_PRESS) },
-            sheet = sheet
-        ),
+        modifier = modifier,
         // Disable swipe when zoomed in
         userScrollEnabled = zoomedOut,
         // Preload adjacent pages for smoother transitions
@@ -587,6 +585,20 @@ fun MediaViewer(viewState: MediaViewerViewState) {
             // The opening thumbnail stays underneath until the carousel has actually drawn the
             // focused photo, so switching between them never shows an empty frame.
             var carouselReady by remember { mutableStateOf(false) }
+            // Zoom state of the photo in focus (set by the carousel).
+            val zoomHolder = remember { mutableStateOf<ZoomableState?>(null) }
+            // One container owns the close gestures for both the opening image and the carousel,
+            // so the switch between them (the photo finishing loading) can't interrupt a drag.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .closeGestures(
+                        enabled = { zoomHolder.value?.isZoomedOut ?: true },
+                        dismiss = dismissOffset,
+                        onClose = { onRequest(EVENT_BACK_PRESS) },
+                        sheet = sheet
+                    )
+            ) {
             if (isLoading || !carouselReady)
                 AsyncImage(
                     contentDescription = null,
@@ -600,13 +612,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                         .precision(Precision.INEXACT)
                         .data(MediaProvider.buildContentUri(viewState.focused))
                         .build(),
-                    // Closable right away - no need to wait for the photo list to load.
                     modifier = modifier
-                        .closeGestures(
-                            enabled = { true },
-                            dismiss = dismissOffset,
-                            onClose = { onRequest(EVENT_BACK_PRESS) }
-                        )
                         .thenIf(!carouselReady && !dismissOffset.dismissed) {
                             RouteFiles.sharedElement(viewState.focused)
                         },
@@ -616,12 +622,12 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                 Carousel(
                     viewState,
                     onRequest,
-                    dismissOffset,
                     sharedElementEnabled = carouselReady && !dismissOffset.dismissed,
                     onReady = { carouselReady = true },
-                    sheet = sheet,
+                    zoomHolder = zoomHolder,
                     modifier = modifier
                 )
+            }
             // Swipe-up properties sheet, on top of everything, anchored to the bottom.
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
                 DetailsSheet(of = currentFile, state = sheet)

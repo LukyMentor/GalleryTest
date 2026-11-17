@@ -45,6 +45,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -96,7 +97,14 @@ fun MapScreen() {
     val photos by PhotoLocations.photos.collectAsState()
     val scanning by PhotoLocations.scanning.collectAsState()
     val progress by PhotoLocations.progress.collectAsState()
-    var selected by remember { mutableStateOf<PhotoCluster?>(null) }
+    // The opened place (its photo ids), saved so it's still open after viewing one of its photos.
+    var selectedIds by rememberSaveable { mutableStateOf<LongArray?>(null) }
+    val selected = remember(selectedIds, photos) {
+        val ids = selectedIds ?: return@remember null
+        val byId = photos.associateBy { it.id }
+        val list = ids.mapNotNull { byId[it] }
+        if (list.isEmpty()) null else PhotoCluster(list, 0f, 0f)
+    }
 
     Box(Modifier.fillMaxSize()) {
         // Offline map bundled in the app: no internet, no API key.
@@ -104,7 +112,7 @@ fun MapScreen() {
             photos = photos,
             dark = dark,
             accent = colors.accent,
-            onClusterTap = { selected = it },
+            onClusterTap = { cluster -> selectedIds = cluster.photos.map { it.id }.toLongArray() },
             modifier = Modifier.fillMaxSize()
         )
 
@@ -162,7 +170,7 @@ fun MapScreen() {
         if (cluster != null)
             PlaceStrip(
                 cluster = cluster,
-                onDismiss = { selected = null },
+                onDismiss = { selectedIds = null },
                 onOpen = { photo ->
                     navController.navigate(RouteViewer(RouteFiles.SOURCE_TIMELINE, photo.id))
                 },

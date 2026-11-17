@@ -84,7 +84,7 @@ places = json.load(open(f'{SRC}/ne_10m_populated_places_simple.geojson'))['featu
 
 stats = [0, 0, 0]
 with open(OUT, 'wb') as f:
-    f.write(b'MGW2')
+    f.write(b'MGW3')
     f.write(struct.pack('<I', len(countries)))
     for c in countries:
         rings = list(rings_of(c['geometry']))
@@ -112,5 +112,17 @@ with open(OUT, 'wb') as f:
     f.write(struct.pack('<I', len(cities)))
     for mz, _, x, y, name in cities:
         f.write(struct.pack('<2fBH', x, y, int(math.floor(mz)), len(name)))
+        f.write(name)
+    # Country name labels (Natural Earth label points and zoom range), most important first.
+    labels = []
+    for c in countries:
+        pr = c['properties']
+        x, y = merc(pr['LABEL_X'], pr['LABEL_Y'])
+        name = (pr.get('NAME_EN') or pr.get('NAME') or '').encode('utf-8')
+        labels.append((pr.get('MIN_LABEL') or 5, x, y, pr.get('MAX_LABEL') or 10, name))
+    labels.sort()
+    f.write(struct.pack('<I', len(labels)))
+    for mn, x, y, mx, name in labels:
+        f.write(struct.pack('<2f2BH', x, y, int(math.floor(mn)), int(math.ceil(mx)), len(name)))
         f.write(name)
 print('points coarse/mid/fine', stats, 'lakes', len(lake_rings), 'cities', len(cities))

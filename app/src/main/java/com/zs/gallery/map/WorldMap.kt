@@ -30,6 +30,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -103,12 +104,13 @@ private class MapColors(
 )
 
 private val LightMap = MapColors(
-    water = Color(0xFFCFDDEA), land = Color(0xFFF3F0E8), border = Color(0xFFC5BCB0),
-    coast = Color(0xFFAFC3D6), city = Color(0xFF4A4A55), cityHalo = Color(0xCCF3F0E8),
+    water = Color(0xFFC4D7E8), land = Color(0xFFF5F2EB), border = Color(0xFFA89E92),
+    coast = Color(0xFFAFC3D6), city = Color(0xFF3E3E48), cityHalo = Color(0xE6F5F2EB),
 )
+// Dark mode: clearly lighter land than water, and borders that stand out.
 private val DarkMap = MapColors(
-    water = Color(0xFF0D1117), land = Color(0xFF1D212A), border = Color(0xFF363B47),
-    coast = Color(0xFF2A3140), city = Color(0xFF9EA4B0), cityHalo = Color(0xCC1D212A),
+    water = Color(0xFF0A0D12), land = Color(0xFF2B303B), border = Color(0xFF6B7385),
+    coast = Color(0xFF2A3140), city = Color(0xFFC9CED8), cityHalo = Color(0xE62B303B),
 )
 
 /**
@@ -130,9 +132,10 @@ fun WorldMap(
     LaunchedEffect(Unit) { world = WorldData.load(context) }
 
     // Camera: zoom (0 = whole world in 256 dp) and the centre in normalized coordinates.
-    var zoom by remember { mutableFloatStateOf(1f) }
-    var cx by remember { mutableFloatStateOf(0.5f) }
-    var cy by remember { mutableFloatStateOf(0.42f) }
+    // Saved, so coming back from a photo returns to the same place on the map.
+    var zoom by rememberSaveable { mutableStateOf(1f) }
+    var cx by rememberSaveable { mutableStateOf(0.5f) }
+    var cy by rememberSaveable { mutableStateOf(0.42f) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     val tilePx = with(density) { 256.dp.toPx() }
     fun worldSize(z: Float = zoom) = tilePx * 2f.pow(z)
@@ -152,7 +155,7 @@ fun WorldMap(
     val points = remember(photos) { photos.map { mercator(it.latitude, it.longitude) } }
 
     // Start by showing all photos (once they're known).
-    var fitted by remember { mutableStateOf(false) }
+    var fitted by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(points, viewport) {
         if (fitted || points.isEmpty() || viewport == IntSize.Zero) return@LaunchedEffect
         fitted = true
@@ -210,7 +213,18 @@ fun WorldMap(
     }
 
     val textMeasurer = rememberTextMeasurer(cacheSize = 512)
-    val cityStyle = TextStyle(fontSize = 11.sp, color = colors.city, fontWeight = FontWeight.Medium)
+    val cityStyle = TextStyle(
+        fontSize = 11.sp, color = colors.city, fontWeight = FontWeight.Medium,
+        shadow = androidx.compose.ui.graphics.Shadow(colors.cityHalo, blurRadius = 4f)
+    )
+    val countryStyle = TextStyle(
+        fontSize = 12.sp,
+        color = colors.city.copy(alpha = 0.85f),
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 1.5.sp,
+        shadow = androidx.compose.ui.graphics.Shadow(colors.cityHalo, blurRadius = 6f)
+    )
+    val borderPx = with(density) { 1.dp.toPx() }
     val badgeStyle = TextStyle(fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
     val scope = rememberCoroutineScope()
     var motion by remember { mutableStateOf<Job?>(null) }
@@ -353,16 +367,31 @@ fun WorldMap(
             }
             if (lod > 0 && data.lakes.intersects(left, top, right, bottom))
                 drawPath(data.lakes.path, colors.water)
-            // Hairlines (width 0) are always one pixel thick, whatever the zoom.
+            // Borders ~1 dp wide on screen at any zoom (the path is drawn in world units).
+            val border = Stroke(width = borderPx / w)
             for (country in data.countries) {
                 val shape = country.lods[lod]
                 if (!shape.intersects(left, top, right, bottom)) continue
-                drawPath(shape.path, colors.border, style = Stroke(width = 0f))
+                drawPath(shape.path, colors.border, style = border)
             }
         }
 
-        // City names, most important first, skipping ones that would overlap.
+        // Country names (from the zoom where they fit until they get too big), then city names;
+        // most important first, skipping ones that would overlap.
         val placed = ArrayList<Rect>()
+        for (label in data.countryLabels) {
+            if (zoom < label.minZoom - 1f || zoom > label.maxZoom + 0.5f) continue
+            if (label.x < left || label.x > right || label.y < top || label.y > bottom) continue
+            val layout = textMeasurer.measure(label.name.uppercase(), countryStyle)
+            val p = Offset((label.x - left) * w, (label.y - top) * w)
+            val box = Rect(
+                p.x - layout.size.width / 2f, p.y - layout.size.height / 2f,
+                p.x + layout.size.width / 2f, p.y + layout.size.height / 2f
+            )
+            if (placed.any { it.overlaps(box) }) continue
+            placed += box.inflate(6f)
+            drawText(layout, topLeft = box.topLeft)
+        }
         var labels = 0
         val dot = 2.5.dp.toPx()
         for (city in data.cities) {
