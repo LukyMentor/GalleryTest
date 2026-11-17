@@ -27,6 +27,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayCircleFilled
 import androidx.compose.material.icons.outlined.Circle
@@ -77,6 +79,7 @@ fun MediaFile(
     checked: Int, // -1 for show selected circle; pass 0 for unchecked, 1 for checked.
     modifier: Modifier = Modifier,
     sizeLabel: String? = null,
+    favourite: Boolean = false,
 ) {
     // Deterministic per item (was random on every recomposition, making tiles flicker shade).
     val elevation = if (value.id % 2L == 0L) 0.5.dp else 1.dp
@@ -151,6 +154,19 @@ fun MediaFile(
                             .padding(ContentPadding.medium)
                     )
                 }
+            )
+        // Liked: a small yellow star (top right; bottom right on videos, which show the duration).
+        if (favourite)
+            Icon(
+                imageVector = Icons.Filled.Star,
+                contentDescription = "Favourite",
+                tint = Color(0xFFFFC83D),
+                modifier = Modifier
+                    .align(if (value.isImage) Alignment.TopEnd else Alignment.BottomEnd)
+                    .padding(5.dp)
+                    .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                    .padding(3.dp)
+                    .size(14.dp)
             )
         if (checked == -1) return@Box
 

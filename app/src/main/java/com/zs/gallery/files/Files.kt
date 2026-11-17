@@ -94,6 +94,8 @@ import com.zs.gallery.common.SelectionTracker
 import com.zs.gallery.common.compose.blockVerticalDrag
 import com.zs.gallery.common.compose.FloatingActionMenu
 import com.zs.gallery.common.compose.FloatingLargeTopAppBar
+import com.zs.gallery.viewer.CountBubble
+import com.zs.gallery.viewer.ViewerActions
 import com.zs.gallery.common.compose.LocalNavController
 import com.zs.gallery.common.compose.LocalSystemFacade
 import com.zs.gallery.common.compose.OverflowMenu
@@ -190,41 +192,16 @@ fun Files(viewState: FilesViewState) {
         },
         //
         floatingActionButton = {
-            FloatingActionMenu(
+            // Same big round buttons as the photo viewer: count, like, delete, share, "⋮".
+            ViewerActions(
                 visible = viewState.isInSelectionMode,
-                background = colors.background(surface),
-                contentColor = AppTheme.colors.onBackground,
+                actions = actions,
+                onAction = { viewState.onRequest(it, ctx.findActivity()) },
+                leading = { CountBubble(viewState.selectedCount) },
                 modifier = Modifier.windowInsetsPadding(
                     (if (compact) inAppNavInsets else WindowInsets.None).union(WindowInsets.systemBars)
                         .only(WindowInsetsSides.Bottom + WindowInsetsSides.End)
                 ),
-                border = colors.shine,
-                content = {
-                    // Label
-                    Surface(color = AppTheme.colors.accent, shape = AppTheme.shapes.medium) {
-                        Label(
-                            text = "${viewState.selectedCount}",
-                            style = AppTheme.typography.title2,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = CP.medium, vertical = CP.small)
-                        )
-                    }
-
-                    // Divider
-                    VerticalDivider(
-                        modifier = Modifier
-                            .height(CP.large)
-                            .padding(start = CP.small, end = CP.small)
-                    )
-
-                    // overflow
-                    OverflowMenu(
-                        actions,
-                        onItemClicked = { viewState.onRequest(it, ctx.findActivity()) },
-                        collapsed = 3,
-                        compact = true
-                    )
-                }
             )
         },
         //
@@ -293,6 +270,7 @@ fun Files(viewState: FilesViewState) {
                                 focused = false,
                                 value = item,
                                 sizeLabel = if (showSizes) formatSize(item.size) else null,
+                                favourite = viewState.isFavourite(item.id),
                                 checked = when {
                                     !viewState.isInSelectionMode -> -1
                                     viewState.isSelected(item.id) -> 1

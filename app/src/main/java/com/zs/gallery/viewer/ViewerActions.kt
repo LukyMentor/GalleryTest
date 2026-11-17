@@ -62,6 +62,7 @@ fun ViewerActions(
     onAction: (Action) -> Unit,
     modifier: Modifier = Modifier,
     visibleCount: Int = 3,
+    leading: (@Composable () -> Unit)? = null,
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -74,6 +75,7 @@ fun ViewerActions(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
+            leading?.invoke()
             for (action in actions.take(visibleCount)) {
                 // A liked photo shows a solid yellow star (not just a slightly different outline).
                 val liked = action.label == R.string.unlike
@@ -142,6 +144,27 @@ private fun RoundButton(
             contentDescription = contentDescription,
             tint = if (enabled) tint else tint.copy(alpha = 0.4f),
             modifier = Modifier.size(26.dp)
+        )
+    }
+}
+
+
+/** Round accent bubble with the number of selected items (same size as the buttons). */
+@Composable
+fun CountBubble(count: Int) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(ButtonSize)
+            .shadow(8.dp, CircleShape)
+            .clip(CircleShape)
+            .background(com.zs.compose.theme.AppTheme.colors.accent)
+    ) {
+        com.zs.compose.theme.text.Label(
+            text = "$count",
+            color = com.zs.compose.theme.AppTheme.colors.onAccent,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            style = com.zs.compose.theme.AppTheme.typography.title3
         )
     }
 }

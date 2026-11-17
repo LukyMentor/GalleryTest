@@ -129,6 +129,9 @@ interface FilesViewState : SelectionTracker {
     val selectedCount: Int
 
     /** O(1) check whether the item with [id] is selected. */
+    /** Whether the photo is liked (shows a small yellow star on its tile). */
+    fun isFavourite(id: Long): Boolean = false
+
     fun isSelected(id: Long): Boolean
 
     /** Selects ([value] = true) or deselects all [ids] in one go; used by drag-to-select. */

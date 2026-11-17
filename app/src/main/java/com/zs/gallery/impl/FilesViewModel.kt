@@ -59,6 +59,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import com.zs.core.store.sortedForTimeline
 import com.zs.gallery.files.MediaFilter
+import kotlinx.coroutines.launch
 import com.zs.gallery.files.RouteFiles.SOURCE_PICK
 import com.zs.gallery.files.MediaOrder
 import androidx.compose.runtime.snapshotFlow
@@ -197,6 +198,9 @@ class FilesViewModel(
     override val selected: List<Long> get() = selection.toList()
     override val selectedCount: Int get() = selection.size
     override fun isSelected(id: Long): Boolean = id in selection
+
+    private var favouriteIds: Set<Long> by mutableStateOf(emptySet())
+    override fun isFavourite(id: Long): Boolean = id in favouriteIds
     override val isInSelectionMode: Boolean by derivedStateOf { selection.isNotEmpty() }
     override val allSelected: Boolean by derivedStateOf {
         // FixMe: For now this seems reasonable.
@@ -458,6 +462,12 @@ class FilesViewModel(
     }
 
     init {
+        viewModelScope.launch {
+            preferences.observe(Settings.KEY_FAVOURITE_FILES)
+                .map { it.toHashSet() }
+                .flowOn(kotlinx.coroutines.Dispatchers.Default)
+                .collect { favouriteIds = it }
+        }
         if (source == SOURCE_PICK)
             showPlatformToast("Tap photos to select them, then Move here or Copy here")
         provider.observer(MediaProvider.EXTERNAL_CONTENT_URI)
