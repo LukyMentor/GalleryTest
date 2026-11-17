@@ -179,15 +179,16 @@ class MediaViewerViewModel(
                 this += RESTORE; this += DELETE
                 return@buildList
             }
+            // Shown as buttons (the viewer shows the first 3): like, edit, delete.
             this += if (favourite) UN_STAR else STAR
-            if (BuildConfig.FLAVOR != BuildConfig.FLAVOR_COMMUNITY)
-                this += GOOGLE_LENS
-            this += QUICK_SHARE
-            // if this is video currently return otherwise editing can be called for video also
-            if (current?.isImage == true)
-                this += USE_AS; this += EDIT_IN
-            this += SHARE
+            this += EDIT_IN
             this += DELETE
+            // In the "⋮" menu.
+            this += SHARE
+            this += QUICK_SHARE
+            // Wallpaper only makes sense for images.
+            if (current?.isImage == true)
+                this += USE_AS
         }
     }
 

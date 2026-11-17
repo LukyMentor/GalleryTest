@@ -21,6 +21,34 @@ package com.zs.gallery.viewer
 import android.text.format.DateUtils
 import android.text.format.Formatter
 import android.view.Gravity
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
@@ -119,56 +147,158 @@ fun DetailsViewDialog(
                 onClick = onDismissRequest
             )
         },
-        content = {
-            // Date Modified
-            Header(
-                remember(value.id) { formatter.format(Date(value.timelineDate)) },
-                style = AppTheme.typography.title2,
-                contentPadding = PaddingValues(
-                    horizontal = ContentPadding.medium,
-                    vertical = ContentPadding.medium
-                )
-            )
+        content = { DetailsBody(value) }
+    )
+}
 
-            // Section header
-            Header(
-                stringResource(R.string.details),
-                style = AppTheme.typography.label3,
+/** The properties shown in the dialog and in the swipe-up sheet. */
+@Composable
+private fun DetailsBody(value: MediaFile) = Column {
+        // Date Modified
+        Header(
+            remember(value.id) { formatter.format(Date(value.timelineDate)) },
+            style = AppTheme.typography.title2,
+            contentPadding = PaddingValues(
+                horizontal = ContentPadding.medium,
+                vertical = ContentPadding.medium
+            )
+        )
+
+        // Section header
+        Header(
+            stringResource(R.string.details),
+            style = AppTheme.typography.label3,
 //                contentPadding = PaddingValues(
 //                    horizontal = ContentPadding.medium,
 //                    vertical = ContentPadding.small
 //                ),
-            )
+        )
 
-            // Title
-            Info(
-                icon = Icons.Outlined.Image,
-                title = stringResource(R.string.title),
-                value = value.name
-            )
+        // Title
+        Info(
+            icon = Icons.Outlined.Image,
+            title = stringResource(R.string.title),
+            value = value.name
+        )
 
-            // Path
-            Info(
-                icon = Icons.Outlined.Memory,
-                title = stringResource(R.string.path),
-                value = value.path.substringBeforeLast("/"),
-            )
+        // Path
+        Info(
+            icon = Icons.Outlined.Memory,
+            title = stringResource(R.string.path),
+            value = value.path.substringBeforeLast("/"),
+        )
 
-            // Metadata
-            val context = LocalContext.current
-            Info(
-                icon = Icons.Outlined.ImageSearch,
-                title = stringResource(R.string.metadata),
-                value = buildString {
-                    append(Formatter.formatFileSize(context, value.size))
-                    if (value.isImage && value.megapixels > 0)
-                        append(String.format(" • %.1f MP", value.megapixels))
-                    if (value.width > 0 && value.height > 0)
-                        append(" • ${value.width} x ${value.height}")
-                    if (value.duration > 0)
-                        append(" • " + DateUtils.formatElapsedTime(value.duration / 1000L))
-                }
-            )
+        // Metadata
+        val context = LocalContext.current
+        Info(
+            icon = Icons.Outlined.ImageSearch,
+            title = stringResource(R.string.metadata),
+            value = buildString {
+                append(Formatter.formatFileSize(context, value.size))
+                if (value.isImage && value.megapixels > 0)
+                    append(String.format(" • %.1f MP", value.megapixels))
+                if (value.width > 0 && value.height > 0)
+                    append(" • ${value.width} x ${value.height}")
+                if (value.duration > 0)
+                    append(" • " + DateUtils.formatElapsedTime(value.duration / 1000L))
+            }
+        )
+}
+
+/**
+ * State of the swipe-up properties sheet: how far it is pulled up ([reveal], px) out of its
+ * full [height]. Driven directly by the finger; [settle] snaps it open or closed on release.
+ */
+@Stable
+class DetailsSheetState(private val scope: CoroutineScope, private val density: Float) {
+    var height by mutableIntStateOf(0)
+    val reveal = mutableFloatStateOf(0f)
+    val isOpen: Boolean get() = reveal.floatValue > 0f
+    private var job: Job? = null
+
+    /** Finger moved by [dy] px (negative = up = pull the sheet further out). */
+    fun dragBy(dy: Float) {
+        job?.cancel()
+        reveal.floatValue = (reveal.floatValue - dy).coerceIn(0f, height.toFloat())
+    }
+
+    /** Finger lifted with vertical [velocityY] (px/s; negative = upwards). */
+    fun settle(velocityY: Float) {
+        val fling = 600f * density
+        val open = when {
+            velocityY < -fling -> true
+            velocityY > fling -> false
+            else -> reveal.floatValue > height * 0.35f
         }
-    )
+        animateTo(if (open) height.toFloat() else 0f)
+    }
+
+    fun open() = animateTo(height.toFloat())
+    fun close() = animateTo(0f)
+
+    private fun animateTo(target: Float) {
+        job?.cancel()
+        val start = reveal.floatValue
+        if (start == target) return
+        job = scope.launch {
+            animate(start, target, animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) { v, _ ->
+                reveal.floatValue = v
+            }
+        }
+    }
+}
+
+@Composable
+fun rememberDetailsSheetState(): DetailsSheetState {
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current.density
+    return remember { DetailsSheetState(scope, density) }
+}
+
+/**
+ * Properties sheet anchored to the bottom of the viewer. It is pulled up by swiping up on the
+ * photo (the photo itself never moves) and follows the finger; it can be dragged back down on
+ * the sheet itself or on the photo.
+ */
+@Composable
+fun DetailsSheet(
+    of: MediaFile?,
+    state: DetailsSheetState,
+    modifier: Modifier = Modifier,
+) {
+    val value = of ?: return
+    val colors = AppTheme.colors
+    val shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .onSizeChanged { state.height = it.height }
+            .graphicsLayer {
+                // Hidden below the screen edge until pulled up.
+                translationY = size.height - state.reveal.floatValue
+            }
+            .shadow(16.dp, shape)
+            .background(colors.background(2.dp), shape)
+            .draggable(
+                orientation = Orientation.Vertical,
+                state = rememberDraggableState { delta -> state.dragBy(delta) },
+                onDragStopped = { velocity -> state.settle(velocity) }
+            )
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(horizontal = ContentPadding.large, vertical = ContentPadding.medium)
+    ) {
+        // Grab handle
+        Box(
+            Modifier
+                .align(Alignment.CenterHorizontally)
+                .size(width = 36.dp, height = 4.dp)
+                .background(colors.onBackground.copy(alpha = 0.3f), RoundedCornerShape(50))
+        )
+        Header(
+            stringResource(R.string.properties),
+            style = AppTheme.typography.title3,
+            contentPadding = PaddingValues(vertical = ContentPadding.medium)
+        )
+        DetailsBody(value)
+    }
 }

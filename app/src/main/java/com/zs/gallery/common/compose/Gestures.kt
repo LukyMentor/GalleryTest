@@ -65,15 +65,20 @@ fun Modifier.blockVerticalDrag(): Modifier = pointerInput(Unit) {
  *
  * @param enabled evaluated at the start of every gesture (e.g. only when not zoomed in).
  * @param offset current vertical drag offset in px (0 = resting; negative = dragged up).
- * @param onSwipeUp if set, dragging *up* (with resistance) past a threshold calls it, e.g. to
- *   show the photo's details; the content then springs back.
+ * @param sheetOpen whether a bottom sheet (e.g. properties) is currently pulled out; then every
+ *   vertical drag moves the sheet instead of dismissing.
+ * @param onSheetDrag if set, an *upward* drag (or any drag while the sheet is open) is forwarded
+ *   here as raw finger movement (px, negative = up) and the content itself does not move.
+ * @param onSheetRelease called with the vertical velocity (px/s) when such a drag ends.
  */
 fun Modifier.dragToDismiss(
     enabled: () -> Boolean,
     offset: MutableFloatState,
     onDismiss: () -> Unit,
-    onSwipeUp: (() -> Unit)? = null,
-): Modifier = pointerInput(onSwipeUp != null) {
+    sheetOpen: () -> Boolean = { false },
+    onSheetDrag: ((dy: Float) -> Unit)? = null,
+    onSheetRelease: ((velocityY: Float) -> Unit)? = null,
+): Modifier = pointerInput(onSheetDrag != null) {
     coroutineScope {
         // Settle animation; cancelled whenever a new gesture starts.
         var settle: Job? = null
@@ -86,7 +91,7 @@ fun Modifier.dragToDismiss(
             val slop = viewConfiguration.touchSlop
             var total = Offset.Zero
             var dragging = false
-            var up = false
+            var sheet = false
             var released = false
             while (true) {
                 val event = awaitPointerEvent()
@@ -104,31 +109,40 @@ fun Modifier.dragToDismiss(
                 if (!dragging) {
                     total += delta
                     if (total.getDistance() < slop) continue
-                    // Only a clearly vertical drag starts: down = close, up = details.
+                    // Only a clearly vertical drag starts. Up (or anything while the sheet is
+                    // open) drives the sheet; down closes the viewer.
                     val vertical = abs(total.y) > abs(total.x) * 1.2f
                     when {
-                        vertical && total.y > 0 -> dragging = true
-                        vertical && total.y < 0 && onSwipeUp != null -> {
+                        !vertical -> break
+                        onSheetDrag != null && (sheetOpen() || total.y < 0) -> {
                             dragging = true
-                            up = true
+                            sheet = true
+                            // Include the movement that crossed the slop, so the sheet starts
+                            // exactly under the finger.
+                            onSheetDrag(total.y)
+                            change.consume()
+                            continue
                         }
+                        total.y > 0 -> dragging = true
                         else -> break
                     }
                 }
                 change.consume()
-                offset.floatValue =
-                    if (up) (offset.floatValue + delta.y * 0.5f).coerceAtMost(0f) // resistance
-                    else (offset.floatValue + delta.y).coerceAtLeast(0f)
+                if (sheet) onSheetDrag?.invoke(delta.y)
+                else offset.floatValue = (offset.floatValue + delta.y).coerceAtLeast(0f)
             }
             if (!dragging) return@awaitEachGesture
             val velocity = tracker.calculateVelocity().y
+            if (sheet) {
+                // The photo never moved; just let the sheet snap open or closed.
+                onSheetRelease?.invoke(if (released) velocity else 0f)
+                return@awaitEachGesture
+            }
             val threshold = 96.dp.toPx()
-            if (released && !up && (offset.floatValue > threshold || velocity > 1200.dp.toPx())) {
+            if (released && (offset.floatValue > threshold || velocity > 1200.dp.toPx())) {
                 onDismiss()
                 return@awaitEachGesture
             }
-            if (released && up && (offset.floatValue < -threshold / 2 || velocity < -1200.dp.toPx()))
-                onSwipeUp?.invoke()
             // Spring back to rest.
             val start = offset.floatValue
             settle = launch {

@@ -27,6 +27,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
@@ -145,7 +146,7 @@ private fun Modifier.closeGestures(
     enabled: () -> Boolean,
     dismissOffset: MutableFloatState,
     onClose: () -> Unit,
-    onSwipeUp: (() -> Unit)? = null,
+    sheet: DetailsSheetState? = null,
 ): Modifier {
     // Edge zone for the back swipe: the system gesture inset plus a little margin.
     val density = LocalDensity.current
@@ -164,7 +165,9 @@ private fun Modifier.closeGestures(
             enabled = enabled,
             offset = dismissOffset,
             onDismiss = onClose,
-            onSwipeUp = onSwipeUp
+            sheetOpen = { sheet?.isOpen == true },
+            onSheetDrag = sheet?.let { s -> { dy: Float -> s.dragBy(dy) } },
+            onSheetRelease = sheet?.let { s -> { v: Float -> s.settle(v) } }
         )
         .graphicsLayer {
             // Follow the finger (and shrink slightly while dragging down to close).
@@ -184,6 +187,7 @@ private fun Carousel(
     dismissOffset: MutableFloatState,
     sharedElementEnabled: Boolean,
     onReady: () -> Unit,
+    sheet: DetailsSheetState,
     modifier: Modifier = Modifier,
 ) {
     val data = viewState.data
@@ -229,7 +233,7 @@ private fun Carousel(
             enabled = { focusedZoom?.isZoomedOut ?: true },
             dismissOffset = dismissOffset,
             onClose = { onRequest(EVENT_BACK_PRESS) },
-            onSwipeUp = { onRequest(EVENT_SHOW_INFO) }
+            sheet = sheet
         ),
         // Disable swipe when zoomed in
         userScrollEnabled = zoomedOut,
@@ -320,6 +324,9 @@ fun MediaViewer(viewState: MediaViewerViewState) {
     // Vertical drag-to-dismiss offset in px, shared by the pager and the background fade.
     val dismissOffset = remember { mutableFloatStateOf(0f) }
     val isDragging by remember { derivedStateOf { dismissOffset.floatValue != 0f } }
+    // Swipe-up properties sheet (the photo stays still; the sheet follows the finger).
+    val sheet = rememberDetailsSheetState()
+    val sheetOpen by remember { derivedStateOf { sheet.isOpen } }
     val compact = LocalWindowSize.current.width < Category.Medium
     val surface = rememberAcrylicSurface()
     val colors = AppTheme.colors
@@ -329,7 +336,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
     val onRequest: (Int) -> Unit = { request: Int ->
         when (request) {
             // Toggle the visibility of detailed information.
-            EVENT_SHOW_INFO -> viewState.showDetails = !viewState.showDetails;
+            EVENT_SHOW_INFO -> if (sheet.isOpen) sheet.close() else sheet.open()
             // Toggle immersive mode and update system UI accordingly.
             EVENT_IMMERSIVE_VIEW -> {
                 immersive = !immersive
@@ -337,7 +344,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
             }
             // Handle back press events, prioritizing focused states (immersive, details)
             // before navigating up.
-            EVENT_BACK_PRESS if viewState.showDetails -> viewState.showDetails = false
+            EVENT_BACK_PRESS if sheet.isOpen -> sheet.close()
             // Back closes the viewer straight away, also from immersive (UI hidden) mode;
             // the original system-bar style is restored when the screen is disposed.
             EVENT_BACK_PRESS -> if (!closing) {
@@ -350,10 +357,10 @@ fun MediaViewer(viewState: MediaViewerViewState) {
     }
     //
     BackHandler { onRequest(EVENT_BACK_PRESS) }
-    DetailsViewDialog(
-        viewState.details,
-        onDismissRequest = { viewState.showDetails = false }
-    )
+    // Properties of the photo currently shown (for the sheet).
+    val currentFile by remember {
+        derivedStateOf { viewState.data.find { it.id == viewState.focused } }
+    }
 
     val isLoading by remember { derivedStateOf { viewState.data.isEmpty() } }
     val ctx = LocalContext.current
@@ -392,7 +399,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
         floatingActionButton = {
             val actions = viewState.actions
             FloatingActionMenu(
-                visible = !immersive && !isLoading && !isDragging,
+                visible = !immersive && !isLoading && !isDragging && !sheetOpen,
                 background = colors.background(surface, luminance = -1f),
                 modifier = Modifier.windowInsetsPadding(
                     WindowInsets.systemBars.only(WindowInsetsSides.Bottom + WindowInsetsSides.End)
@@ -402,7 +409,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                     OverflowMenu(
                         actions,
                         onItemClicked = { viewState.onPerformAction(it, ctx.findActivity()) },
-                        collapsed = 4,
+                        collapsed = 3,
                         compact = true
                     )
                 }
@@ -489,8 +496,13 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                     dismissOffset,
                     sharedElementEnabled = carouselReady,
                     onReady = { carouselReady = true },
+                    sheet = sheet,
                     modifier = modifier
                 )
+            // Swipe-up properties sheet, on top of everything, anchored to the bottom.
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+                DetailsSheet(of = currentFile, state = sheet)
+            }
         }
     )
 

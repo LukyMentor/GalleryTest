@@ -146,10 +146,10 @@ import com.google.accompanist.permissions.rememberMultiplePermissionsState as Pe
 
 private const val TAG = "Home"
 
-// Pantone 17-3938 "Very Peri" (#6667AB), in both light and dark mode.
-private val VeryPeri = Color(0xFF6667AB)
-private val LightAccentColor = VeryPeri
-private val DarkAccentColor = VeryPeri
+// Pantone 17-3938 "Very Peri" (#6667AB). Dark mode uses a lighter tint of the same hue so
+// accents stay readable on the near-black background.
+private val LightAccentColor = Color(0xFF6667AB)
+private val DarkAccentColor = Color(0xFF8E8FD1)
 
 private val SIDE_BAR_WIDTH = 100.dp
 
