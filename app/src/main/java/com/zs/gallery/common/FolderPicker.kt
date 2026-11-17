@@ -49,6 +49,25 @@ import com.zs.compose.theme.Icon
 import com.zs.compose.theme.text.Label
 import com.zs.core.store.Folder
 import kotlinx.coroutines.CompletableDeferred
+import kotlin.math.max
+import kotlinx.coroutines.launch
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animate
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 
 /**
  * "Move to" / "Copy to" folder chooser: a sheet with the folders' pictures (instead of a plain
@@ -113,7 +132,7 @@ fun FolderPickerHost() {
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             val request = shown ?: return@AnimatedVisibility
-            Sheet(request)
+            androidx.compose.runtime.key(request) { Sheet(request) }
         }
     }
 }
@@ -122,35 +141,95 @@ fun FolderPickerHost() {
 private fun Sheet(request: FolderPicker.Request) {
     val colors = AppTheme.colors
     val shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    // Pull down to close: by the handle/title, or by pulling the list down once it's at the top.
+    val scope = rememberCoroutineScope()
+    var offset by remember { mutableFloatStateOf(0f) }
+    var height by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current.density
+    fun release(velocity: Float) {
+        scope.launch {
+            val close = offset > height * 0.25f || velocity > 1200f * density
+            val target = if (close) height.toFloat() else 0f
+            animate(offset, target, initialVelocity = velocity,
+                animationSpec = if (close) tween(160) else spring()) { v, _ -> offset = v }
+            if (close) FolderPicker.answer(null)
+        }
+    }
+    val pull = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                // Sheet pulled down and the finger goes back up: raise the sheet first.
+                if (available.y < 0f && offset > 0f) {
+                    val used = max(available.y, -offset)
+                    offset += used
+                    return Offset(0f, used)
+                }
+                return Offset.Zero
+            }
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                // List already at the top and still pulled down: move the sheet.
+                if (available.y > 0f && source == NestedScrollSource.UserInput) {
+                    offset += available.y
+                    return Offset(0f, available.y)
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (offset > 0f) {
+                    release(available.y)
+                    return available
+                }
+                return Velocity.Zero
+            }
+        }
+    }
+    val drag = rememberDraggableState { d -> offset = (offset + d).coerceAtLeast(0f) }
     Column(
         Modifier
             .fillMaxWidth()
             .fillMaxHeight(0.78f)
+            .onSizeChanged { height = it.height }
+            .graphicsLayer { translationY = offset }
+            .nestedScroll(pull)
             .clip(shape)
             .background(colors.background(3.dp))
             // Swallow taps so they don't reach the scrim.
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = {})
             .windowInsetsPadding(WindowInsets.navigationBars)
     ) {
-        Box(
+        // Handle + title: the part you grab to pull the sheet down.
+        Column(
             Modifier
-                .padding(top = 10.dp)
-                .align(Alignment.CenterHorizontally)
-                .size(width = 36.dp, height = 4.dp)
-                .background(colors.onBackground.copy(alpha = 0.3f), RoundedCornerShape(50))
-        )
-        Label(
-            request.title,
-            style = AppTheme.typography.title2,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 20.dp, top = 14.dp)
-        )
-        Label(
-            "Choose a folder",
-            style = AppTheme.typography.body2,
-            color = colors.onBackground.copy(alpha = 0.65f),
-            modifier = Modifier.padding(start = 20.dp, top = 2.dp, bottom = 8.dp)
-        )
+                .fillMaxWidth()
+                .draggable(
+                    orientation = Orientation.Vertical,
+                    state = drag,
+                    onDragStopped = { v -> release(v) }
+                )
+        ) {
+            Box(
+                Modifier
+                    .padding(top = 10.dp)
+                    .align(Alignment.CenterHorizontally)
+                    .size(width = 36.dp, height = 4.dp)
+                    .background(colors.onBackground.copy(alpha = 0.3f), RoundedCornerShape(50))
+            )
+            Label(
+                request.title,
+                style = AppTheme.typography.title2,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.onBackground,
+                modifier = Modifier.padding(start = 20.dp, top = 14.dp)
+            )
+            Label(
+                "Choose a folder",
+                style = AppTheme.typography.body2,
+                color = colors.onBackground.copy(alpha = 0.65f),
+                modifier = Modifier.padding(start = 20.dp, top = 2.dp, bottom = 8.dp)
+            )
+        }
         LazyVerticalGrid(
             columns = GridCells.Adaptive(104.dp),
             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
@@ -227,6 +306,7 @@ private fun FolderTile(folder: Folder, onClick: () -> Unit) {
             folder.name,
             style = AppTheme.typography.body2,
             fontWeight = FontWeight.Medium,
+            color = colors.onBackground,
             maxLines = 1,
             modifier = Modifier.padding(start = 4.dp, top = 6.dp)
         )
