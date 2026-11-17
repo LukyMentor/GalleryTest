@@ -82,6 +82,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import com.zs.compose.foundation.findActivity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -608,6 +609,10 @@ fun Settings(viewState: SettingsViewState) {
                     item(CONTENT_TYPE_HEADER) { GroupHeader(text = stringResource(id = R.string.appearance)) }
                     Appearence(viewState = viewState)
 
+                    // Media management: delete / move / rename without Android asking each time.
+                    item(contentType = CONTENT_TYPE_HEADER) { GroupHeader(text = "Deleting & moving") }
+                    item(contentType = "media_management") { MediaManagementCard() }
+
                     // Crash log (kept on the device; copy it to report a problem)
                     item(contentType = CONTENT_TYPE_HEADER) { GroupHeader(text = "Crash log") }
                     item(contentType = "crash_log") { CrashLogCard() }
@@ -675,5 +680,62 @@ private fun CrashLogCard() {
                 report = null
             }
         }
+    }
+}
+
+
+/**
+ * "Media management" special access: with it, Android stops asking "Allow M Gallery to move this
+ * photo to trash?" (and the same for moving/renaming) every single time.
+ */
+@Composable
+private fun MediaManagementCard() {
+    val context = LocalContext.current
+    val supported = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+    fun granted() = supported && android.provider.MediaStore.canManageMedia(context)
+    var allowed by remember { mutableStateOf(granted()) }
+    // Re-check when coming back from the system settings page.
+    val owner = context.findActivity() as? androidx.lifecycle.LifecycleOwner
+    androidx.compose.runtime.DisposableEffect(owner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) allowed = granted()
+        }
+        owner?.lifecycle?.addObserver(observer)
+        onDispose { owner?.lifecycle?.removeObserver(observer) }
+    }
+    val colors = AppTheme.colors
+    androidx.compose.foundation.layout.Column(
+        modifier = Modifier
+            .padding(horizontal = CP.normal, vertical = CP.small)
+            .fillMaxWidth()
+            .background(colors.background(2.dp), RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Label("Delete without asking", style = AppTheme.typography.body1, fontWeight = FontWeight.SemiBold)
+        Label(
+            when {
+                !supported -> "Needs Android 12 or newer."
+                allowed -> "On: deleting, moving and renaming happen straight away (deleted photos still go to the Recycle Bin)."
+                else -> "Android asks for confirmation every time you delete, move or rename. Allow \"Media management\" to skip that."
+            },
+            style = AppTheme.typography.body2,
+            color = colors.onBackground.copy(alpha = 0.75f)
+        )
+        if (supported)
+            com.zs.gallery.files.FilterChip(if (allowed) "Change in system settings" else "Allow", !allowed) {
+                val intent = android.content.Intent(
+                    android.provider.Settings.ACTION_REQUEST_MANAGE_MEDIA,
+                    android.net.Uri.parse("package:${context.packageName}")
+                )
+                runCatching { context.startActivity(intent) }.onFailure {
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                android.net.Uri.parse("package:${context.packageName}"))
+                        )
+                    }
+                }
+            }
     }
 }
