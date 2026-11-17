@@ -317,6 +317,7 @@ private fun Carousel(
     onReady: () -> Unit,
     zoomHolder: MutableState<ZoomableState?>,
     rotator: Rotator,
+    deleter: Deleter,
     modifier: Modifier = Modifier,
 ) {
     val data = viewState.data
@@ -365,6 +366,20 @@ private fun Carousel(
         beyondViewportPageCount = 1,
         pageContent = { index ->
             val item = data[index]
+            // Deleting: the photo fades and shrinks away; the next one fades in (see Deleter).
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val fade = deleter.fading
+                        if (fade != null && fade.id == item.id) {
+                            alpha = fade.alpha.value
+                            scaleX = fade.scale.value
+                            scaleY = fade.scale.value
+                        } else if (deleter.appearing != null && state.currentPage == index)
+                            alpha = deleter.appearing!!.value
+                    }
+            ) {
             // isFocused indicates whether this item is currently the focused item in the viewpager.
             val isFocused = state.currentPage == index
             // if the user navigated to this item
@@ -474,6 +489,7 @@ private fun Carousel(
                         }
                 )
             }
+            }
         }
     )
 }
@@ -505,6 +521,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
     val zoomHolder = remember { mutableStateOf<ZoomableState?>(null) }
     // Rotate left/right: the photo turns on screen while the file is rotated.
     val rotator = remember { Rotator(dismissScope) }
+    val deleter = remember { Deleter(dismissScope) }
     // Where this screen sits in the window (for drawing the grid picture, see Backdrop).
     val windowPos = remember { floatArrayOf(0f, 0f) }
 
@@ -615,6 +632,12 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                             navController.navigate(com.zs.gallery.crop.RouteCrop(file.mediaUri))
                         (it.label == R.string.rotate_left || it.label == R.string.rotate_right) && file != null ->
                             rotator.rotate(ctx.findActivity(), file, it.label == R.string.rotate_right, zoomHolder.value)
+                        it.label == R.string.delete && file != null -> {
+                            val activity = ctx.findActivity()
+                            deleter.delete(activity, file.id, exists = { id -> viewState.data.any { f -> f.id == id } }) {
+                                viewState.onPerformAction(it, activity)
+                            }
+                        }
                         else -> viewState.onPerformAction(it, ctx.findActivity())
                     }
                 },
@@ -716,6 +739,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                     onReady = { carouselReady = true },
                     zoomHolder = zoomHolder,
                     rotator = rotator,
+                    deleter = deleter,
                     modifier = modifier
                 )
             }
@@ -791,5 +815,69 @@ internal class Rotator(private val scope: CoroutineScope) {
 
     fun done(t: Turn) {
         if (turn === t) turn = null
+    }
+}
+
+
+/**
+ * Delete in the viewer: the photo fades and shrinks away first, then it's deleted; the photo that
+ * takes its place fades in. If the deletion is declined (system dialog), the photo comes back.
+ */
+@Stable
+internal class Deleter(private val scope: CoroutineScope) {
+    class Fade(val id: Long) {
+        val alpha = Animatable(1f)
+        val scale = Animatable(1f)
+    }
+
+    var fading by mutableStateOf<Fade?>(null)
+        private set
+    var appearing by mutableStateOf<Animatable<Float, androidx.compose.animation.core.AnimationVector1D>?>(null)
+        private set
+
+    fun delete(activity: Activity, id: Long, exists: (Long) -> Boolean, perform: () -> Unit) {
+        if (fading != null) return
+        val f = Fade(id)
+        fading = f
+        scope.launch {
+            val spec = tween<Float>(durationMillis = 220, easing = FastOutSlowInEasing)
+            launch { f.scale.animateTo(0.88f, spec) }
+            f.alpha.animateTo(0f, spec)
+            // Was a system "move to trash?" dialog shown (the app gets paused)?
+            var paused = false
+            val owner = activity as? androidx.lifecycle.LifecycleOwner
+            val observer = androidx.lifecycle.LifecycleEventObserver { _, e ->
+                if (e == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) paused = true
+            }
+            owner?.lifecycle?.addObserver(observer)
+            perform()
+            // Gone within a moment (or a moment after the dialog closed)?
+            var gone = false
+            var deadline = System.currentTimeMillis() + 3000
+            var waited = false
+            while (true) {
+                if (!exists(id)) { gone = true; break }
+                val resumed = owner?.lifecycle?.currentState?.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) != false
+                if (paused && !resumed) { waited = true; delay(100); continue }   // dialog still open
+                // Dialog just closed: give the list a moment to update.
+                if (waited) { waited = false; deadline = System.currentTimeMillis() + 2000 }
+                if (System.currentTimeMillis() > deadline) break
+                delay(50)
+            }
+            owner?.lifecycle?.removeObserver(observer)
+            if (!gone) {
+                // Declined: bring it back.
+                launch { f.scale.animateTo(1f, spec) }
+                f.alpha.animateTo(1f, spec)
+                fading = null
+                return@launch
+            }
+            // The next photo slides into its place: fade it in.
+            val a = Animatable(0f)
+            appearing = a
+            fading = null
+            a.animateTo(1f, tween(220))
+            appearing = null
+        }
     }
 }
