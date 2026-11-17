@@ -60,6 +60,8 @@ import com.zs.gallery.viewer.get
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -186,9 +188,14 @@ class MediaViewerViewModel(
         }
     }
 
+    // The first list waits for the opening (shared-element) animation to finish; later updates
+    // (files changed while viewing) apply immediately.
+    private var firstUpdate = true
     val onRequestUpdate: suspend (List<MediaFile>) -> Unit = { values ->
-        delay(600) // necessary for shared animation to work effectively.
-        // experiment for optimal value
+        if (firstUpdate) {
+            firstUpdate = false
+            delay(350)
+        }
         data = values
     }
 
@@ -226,6 +233,8 @@ class MediaViewerViewModel(
                     }
                 }
             }
+            // Load the list off the main thread.
+            .flowOn(Dispatchers.Default)
             .onEach(onRequestUpdate)
             .catch { exception ->
                 Log.d(TAG, "provider: ${exception.stackTraceToString()}")

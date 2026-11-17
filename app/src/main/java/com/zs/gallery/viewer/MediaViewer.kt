@@ -129,6 +129,42 @@ private val DEFAULT_ZOOM_SPECS = ZoomSpec(5f)
 private val ZoomableState.isZoomedOut get() = (zoomFraction ?: 0f) <= 0.0001f
 
 
+/**
+ * Close gestures shared by the opening image and the carousel: swipe in from a screen edge
+ * (= back) and drag down to close (photo follows the finger). [enabled] is checked when each
+ * gesture starts, e.g. to ignore them while zoomed in.
+ */
+@Composable
+private fun Modifier.closeGestures(
+    enabled: () -> Boolean,
+    dismissOffset: MutableFloatState,
+    onClose: () -> Unit,
+): Modifier {
+    // Edge zone for the back swipe: the system gesture inset plus a little margin.
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val systemGestures = WindowInsets.systemGestures
+    val edgeZone = {
+        val inset = maxOf(
+            systemGestures.getLeft(density, layoutDirection),
+            systemGestures.getRight(density, layoutDirection)
+        ).toFloat()
+        with(density) { maxOf(inset + 12.dp.toPx(), 32.dp.toPx()) }
+    }
+    return this
+        .edgeSwipeBack(enabled = enabled, edge = edgeZone, onBack = onClose)
+        .dragToDismiss(enabled = enabled, offset = dismissOffset, onDismiss = onClose)
+        .graphicsLayer {
+            // Follow the finger and shrink slightly while dragging down.
+            val offset = dismissOffset.floatValue
+            val progress = (offset / (size.height * 0.5f)).coerceIn(0f, 1f)
+            translationY = offset
+            val scale = 1f - 0.25f * progress
+            scaleX = scale
+            scaleY = scale
+        }
+}
+
 @Composable
 private fun Carousel(
     viewState: MediaViewerViewState,
@@ -188,41 +224,15 @@ private fun Carousel(
         val longSide = maxOf(windowInfo.containerSize.width, windowInfo.containerSize.height)
         (longSide * 1.5f).toInt().coerceIn(1080, 4096)
     }
-    // Edge zone for the back swipe: the system gesture inset plus a little margin.
-    val density = LocalDensity.current
-    val layoutDirection = LocalLayoutDirection.current
-    val systemGestures = WindowInsets.systemGestures
-    val edgeZone = {
-        val inset = maxOf(
-            systemGestures.getLeft(density, layoutDirection),
-            systemGestures.getRight(density, layoutDirection)
-        ).toFloat()
-        with(density) { maxOf(inset + 12.dp.toPx(), 32.dp.toPx()) }
-    }
     HorizontalPager(
         state = state,
         key = { data[it].id },
         pageSpacing = ContentPadding.normal,
-        modifier = modifier
-            .edgeSwipeBack(
-                enabled = { zoomable.isZoomedOut },
-                edge = edgeZone,
-                onBack = { onRequest(EVENT_BACK_PRESS) }
-            )
-            .dragToDismiss(
-                enabled = { zoomable.isZoomedOut },
-                offset = dismissOffset,
-                onDismiss = { onRequest(EVENT_BACK_PRESS) }
-            )
-            .graphicsLayer {
-                // Follow the finger and shrink slightly while dragging down.
-                val offset = dismissOffset.floatValue
-                val progress = (offset / (size.height * 0.5f)).coerceIn(0f, 1f)
-                translationY = offset
-                val scale = 1f - 0.25f * progress
-                scaleX = scale
-                scaleY = scale
-            },
+        modifier = modifier.closeGestures(
+            enabled = { zoomable.isZoomedOut },
+            dismissOffset = dismissOffset,
+            onClose = { onRequest(EVENT_BACK_PRESS) }
+        ),
         userScrollEnabled = zoomable.isZoomedOut,
         beyondViewportPageCount = 1,
         pageContent = { index ->
@@ -331,6 +341,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
         }
     }
     //
+    BackHandler { onRequest(EVENT_BACK_PRESS) }
     DetailsViewDialog(
         viewState.details,
         onDismissRequest = { viewState.showDetails = false }
@@ -350,7 +361,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
         // TopAppBar
         topBar = {
             MediaViewerTopAppBar(
-                visible = !immersive && !isLoading && !isDragging,
+                visible = !immersive && !isDragging,
                 title = viewState.title,
                 provider = surface,
                 navigationIcon = {
@@ -450,7 +461,14 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                         .precision(Precision.INEXACT)
                         .data(MediaProvider.buildContentUri(viewState.focused))
                         .build(),
-                    modifier = modifier.then(RouteFiles.sharedElement(viewState.focused)),
+                    // Closable right away - no need to wait for the photo list to load.
+                    modifier = modifier
+                        .closeGestures(
+                            enabled = { true },
+                            dismissOffset = dismissOffset,
+                            onClose = { onRequest(EVENT_BACK_PRESS) }
+                        )
+                        .then(RouteFiles.sharedElement(viewState.focused)),
                 )
             // If data is loaded, display the Carousel with the media items.
             else Carousel(viewState, onRequest, dismissOffset, modifier = modifier)
