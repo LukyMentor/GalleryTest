@@ -38,6 +38,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Crop
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.RotateRight
+import androidx.compose.material.icons.outlined.RotateLeft
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.size
@@ -197,11 +199,19 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
     val leave = {
         if (external) context.findActivity().finish() else navController.navigateUp()
     }
-    val preview by produceState<ImageBitmap?>(null, source) {
+    val base by produceState<Bitmap?>(null, source) {
         val src = source ?: return@produceState
         value = withContext(Dispatchers.IO) {
-            runCatching { decode(context, src.uri, 2048, software = false).asImageBitmap() }.getOrNull()
+            runCatching { decode(context, src.uri, 2048, software = true) }.getOrNull()
         }
+    }
+    // Quarter turns clockwise (0..3), applied to the preview here and to the full image on save.
+    var turns by rememberSaveable { mutableIntStateOf(0) }
+    val preview = remember(base, turns) {
+        val b = base ?: return@remember null
+        if (turns == 0) b.asImageBitmap()
+        else Bitmap.createBitmap(b, 0, 0, b.width, b.height,
+            android.graphics.Matrix().apply { postRotate(90f * turns) }, true).asImageBitmap()
     }
     // Frame in 0..1 of the photo; ratio = width / height in pixels (0 = free).
     var crop by rememberSaveable(stateSaver = RectSaver) { mutableStateOf(Rect(0f, 0f, 1f, 1f)) }
@@ -232,6 +242,22 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
         }
     }
 
+    /** Turns the photo 90°; the frame, the drawings and the shape turn with it. */
+    fun turn(clockwise: Boolean) {
+        val w0 = preview?.width?.toFloat() ?: return
+        val h0 = preview.height.toFloat()
+        turns = (turns + if (clockwise) 1 else 3) % 4
+        fun map(o: Offset) = if (clockwise) Offset(1f - o.y, o.x) else Offset(o.y, 1f - o.x)
+        val a = map(crop.topLeft)
+        val b = map(crop.bottomRight)
+        crop = Rect(min(a.x, b.x), min(a.y, b.y), max(a.x, b.x), max(a.y, b.y))
+        if (ratio != 0f) ratio = 1f / ratio
+        // Widths are a fraction of the photo's width, which is now the old height.
+        val turned = marks.map { m -> Mark(m.tool, m.color, m.width * w0 / h0, m.points.map(::map)) }
+        marks.clear()
+        marks.addAll(turned)
+    }
+
     fun applyRatio(value: Float) {
         ratio = value
         if (value == 0f || imageRect.isEmpty) return
@@ -251,7 +277,7 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
         saving = true
         scope.launch {
             val activity = context.findActivity()
-            val ok = saveCrop(activity, src, crop, replace, marks.map { it.frozen() })
+            val ok = saveCrop(activity, src, crop, replace, marks.map { it.frozen() }, turns)
             saving = false
             Toast.makeText(
                 context,
@@ -440,17 +466,22 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
                     drawLine(c, Offset(r.right, r.center.y - half), Offset(r.right, r.center.y + half), t)
                 }
         }
-        // Shapes.
+        // Rotate + shapes (crop) or tools + colours (draw).
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 4.dp)
         ) {
-            if (!drawMode)
+            if (!drawMode) {
+                ToolButton(Icons.Outlined.RotateLeft, "Rotate left", false) { turn(clockwise = false) }
+                ToolButton(Icons.Outlined.RotateRight, "Rotate right", false) { turn(clockwise = true) }
+                Spacer(Modifier.size(width = 6.dp, height = 1.dp))
                 for ((label, value) in Ratios)
                     Pill(label, selected = ratio == value, onClick = { applyRatio(value) })
+            }
             else {
                 ToolButton(Icons.Outlined.NorthEast, "Arrow", tool == Tool.ARROW) { tool = Tool.ARROW }
                 ToolButton(Icons.Outlined.Gesture, "Pen", tool == Tool.PEN) { tool = Tool.PEN }
@@ -695,7 +726,7 @@ private fun resize(s: Rect, handle: Int, d: Offset, rn: Float, minW: Float, minH
 
 /** Writes the cropped photo: as a copy next to the original, or over the original. */
 private suspend fun saveCrop(
-    activity: Activity, src: CropSource, crop: Rect, replace: Boolean, marks: List<Mark>,
+    activity: Activity, src: CropSource, crop: Rect, replace: Boolean, marks: List<Mark>, turns: Int,
 ): Boolean {
     if (replace && !requestWrite(activity, src.uri)) return false
     val resolver = activity.contentResolver
@@ -703,6 +734,9 @@ private suspend fun saveCrop(
         runCatching {
             // Full quality (only huge photos are scaled, to stay within memory).
             var full = decode(activity, src.uri, 8000, software = true)
+            if (turns != 0)
+                full = Bitmap.createBitmap(full, 0, 0, full.width, full.height,
+                    android.graphics.Matrix().apply { postRotate(90f * turns) }, true)
             if (marks.isNotEmpty()) {
                 if (!full.isMutable) full = full.copy(Bitmap.Config.ARGB_8888, true)
                 val canvas = android.graphics.Canvas(full)

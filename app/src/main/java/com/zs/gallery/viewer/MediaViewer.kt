@@ -96,6 +96,13 @@ import com.zs.gallery.common.compose.LocalNavController
 import com.zs.gallery.common.compose.LocalSystemFacade
 import com.zs.gallery.common.compose.OverflowMenu
 import com.zs.gallery.common.compose.background
+import com.zs.gallery.R
+import androidx.compose.animation.core.FastOutSlowInEasing
+import com.zs.core.store.MediaFile
+import android.app.Activity
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.layout.onPlaced
 import com.zs.gallery.common.compose.preference
@@ -309,6 +316,7 @@ private fun Carousel(
     sharedElementEnabled: Boolean,
     onReady: () -> Unit,
     zoomHolder: MutableState<ZoomableState?>,
+    rotator: Rotator,
     modifier: Modifier = Modifier,
 ) {
     val data = viewState.data
@@ -365,9 +373,19 @@ private fun Carousel(
                 // Sharp zoom: telephoto shows a screen-sized image first and then loads full
                 // resolution tiles for just the zoomed-in part (sub-sampling), like Google
                 // Photos / Aves. The grid thumbnail is shown until the first image is ready.
+                // While a rotation finishes, the old picture (turned on screen) stays until the
+                // re-loaded, really rotated one is ready underneath; then they swap in one frame.
+                val rev = rotator.revisions[item.id] ?: 0
+                val turn = rotator.turn?.takeIf { it.id == item.id }
+                val revs = if (turn != null && turn.fromRev != rev) listOf(turn.fromRev, rev) else listOf(rev)
+                Box(Modifier.fillMaxSize()) {
+                for (r in revs) androidx.compose.runtime.key(r) {
+                val current = r == rev
+                val turning = turn != null && r == turn.fromRev
+                val waiting = turn != null && current && r != turn.fromRev
                 val pageZoom = ZoomableState(DEFAULT_ZOOM_SPECS)
                 val imageState = rememberZoomableImageState(pageZoom)
-                if (isFocused) {
+                if (isFocused && current) {
                     SideEffect { focusedZoom = pageZoom }
                     // Tell the screen once something (placeholder or image) is on screen.
                     LaunchedEffect(imageState) {
@@ -376,21 +394,28 @@ private fun Carousel(
                         onReady()
                     }
                 }
+                if (waiting) LaunchedEffect(imageState) {
+                    snapshotFlow { imageState.isPlaceholderDisplayed || imageState.isImageDisplayed }
+                        .first { it }
+                    rotator.done(turn!!)
+                }
                 ZoomableAsyncImage(
-                    // Keyed by modification time too: a rotated photo reloads right away.
-                    model = remember(item.id, item.dateModified) {
+                    model = remember(item.id, r) {
                         // Formats that support tiled (region) decoding: the small MediaStore
                         // thumbnail is enough as telephoto's preview, because the sharp detail
                         // comes from tiles of the original file anyway. That makes the photo
                         // zoomable almost immediately instead of after a full decode.
+                        // (Just rotated: the system thumbnail may still be the old one, so the
+                        // preview is decoded from the file itself.)
                         val tiled = item.mimeType in TILED_FORMATS
                         ImageRequest(ctx)
                             .data(MediaProvider.buildContentUri(item.id))
-                            .placeholderMemoryCacheKey(thumbnailCacheKey(item.id))
                             .apply {
+                                if (r == 0) placeholderMemoryCacheKey(thumbnailCacheKey(item.id))
+                                else memoryCacheKey("rotated_${item.id}_$r")
                                 if (tiled) {
                                     size(PREVIEW_SIZE)
-                                    preferCachedThumbnail(true)
+                                    preferCachedThumbnail(r == 0)
                                 } else {
                                     // GIFs etc.: show the real image.
                                     preferCachedThumbnail(false)
@@ -404,10 +429,20 @@ private fun Carousel(
                     onDoubleClick = DoubleClickToZoomListener.cycle(2f),
                     modifier = Modifier
                         .fillMaxSize()
-                        .thenIf(isFocused && sharedElementEnabled) {
+                        .graphicsLayer {
+                            if (turning) {
+                                rotationZ = turn!!.angle.value
+                                scaleX = turn.scale.value
+                                scaleY = turn.scale.value
+                            }
+                            if (waiting) alpha = 0f
+                        }
+                        .thenIf(isFocused && sharedElementEnabled && current) {
                             RouteFiles.sharedElement(viewState.focused)
                         }
                 )
+                }
+                }
             } else {
                 if (isFocused) SideEffect {
                     focusedZoom = null
@@ -466,6 +501,10 @@ fun MediaViewer(viewState: MediaViewerViewState) {
     }
     dismissOffset.screenHeight = LocalWindowInfo.current.containerSize.height.toFloat()
     val isDragging by remember { derivedStateOf { dismissOffset.offset != 0f } }
+    // Zoom state of the photo in focus (set by the carousel).
+    val zoomHolder = remember { mutableStateOf<ZoomableState?>(null) }
+    // Rotate left/right: the photo turns on screen while the file is rotated.
+    val rotator = remember { Rotator(dismissScope) }
     // Where this screen sits in the window (for drawing the grid picture, see Backdrop).
     val windowPos = remember { floatArrayOf(0f, 0f) }
 
@@ -571,9 +610,13 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                 actions = viewState.actions,
                 onAction = {
                     val file = currentFile
-                    if (it == com.zs.gallery.crop.CROP && file != null)
-                        navController.navigate(com.zs.gallery.crop.RouteCrop(file.mediaUri))
-                    else viewState.onPerformAction(it, ctx.findActivity())
+                    when {
+                        it == com.zs.gallery.crop.CROP && file != null ->
+                            navController.navigate(com.zs.gallery.crop.RouteCrop(file.mediaUri))
+                        (it.label == R.string.rotate_left || it.label == R.string.rotate_right) && file != null ->
+                            rotator.rotate(ctx.findActivity(), file, it.label == R.string.rotate_right, zoomHolder.value)
+                        else -> viewState.onPerformAction(it, ctx.findActivity())
+                    }
                 },
 
                 modifier = Modifier.windowInsetsPadding(
@@ -633,13 +676,12 @@ fun MediaViewer(viewState: MediaViewerViewState) {
             // The opening thumbnail stays underneath until the carousel has actually drawn the
             // focused photo, so switching between them never shows an empty frame.
             var carouselReady by remember { mutableStateOf(false) }
-            // Zoom state of the photo in focus (set by the carousel).
-            val zoomHolder = remember { mutableStateOf<ZoomableState?>(null) }
             // One container owns the close gestures for both the opening image and the carousel,
             // so the switch between them (the photo finishing loading) can't interrupt a drag.
             Box(
                 Modifier
                     .fillMaxSize()
+                    .onSizeChanged { rotator.pageSize = it }
                     .closeGestures(
                         enabled = { zoomHolder.value?.isZoomedOut ?: true },
                         dismiss = dismissOffset,
@@ -673,6 +715,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                     sharedElementEnabled = carouselReady && !dismissOffset.dismissed,
                     onReady = { carouselReady = true },
                     zoomHolder = zoomHolder,
+                    rotator = rotator,
                     modifier = modifier
                 )
             }
@@ -694,5 +737,59 @@ fun MediaViewer(viewState: MediaViewerViewState) {
             // Reset to default on disposal
             facade.style = original
         }
+    }
+}
+
+/**
+ * Rotate left / right in the viewer: the photo turns on screen (and resizes to fit) while the file
+ * is rotated; then the re-loaded photo replaces it (see the carousel).
+ */
+@Stable
+internal class Rotator(private val scope: CoroutineScope) {
+    class Turn(val id: Long, val fromRev: Int) {
+        val angle = Animatable(0f)
+        val scale = Animatable(1f)
+    }
+
+    /** Per photo: how many times it was rotated while the viewer is open (new image per value). */
+    val revisions = mutableStateMapOf<Long, Int>()
+    var turn by mutableStateOf<Turn?>(null)
+        private set
+    var pageSize = IntSize.Zero
+
+    fun rotate(activity: Activity, file: MediaFile, clockwise: Boolean, zoom: ZoomableState?) {
+        if (turn != null) return
+        val t = Turn(file.id, revisions[file.id] ?: 0)
+        turn = t
+        scope.launch {
+            zoom?.resetZoom()
+            // Scale so the turned photo fits the screen like a freshly opened one would.
+            val bounds = zoom?.transformedContentBounds
+            val w = pageSize.width.toFloat()
+            val h = pageSize.height.toFloat()
+            val fit = if (bounds != null && bounds.width > 1f && bounds.height > 1f && w > 0f && h > 0f)
+                kotlin.math.min(w / bounds.height, h / bounds.width) else 1f
+            val spec = tween<Float>(durationMillis = 320, easing = FastOutSlowInEasing)
+            val animation = launch {
+                launch { t.angle.animateTo(if (clockwise) 90f else -90f, spec) }
+                t.scale.animateTo(fit, spec)
+            }
+            val ok = com.zs.gallery.common.FileOps.rotate(activity, file, clockwise)
+            animation.join()
+            if (!ok) {
+                launch { t.scale.animateTo(1f, spec) }
+                t.angle.animateTo(0f, spec)
+                turn = null
+                return@launch
+            }
+            // Load the really rotated photo underneath; the carousel calls done() once it shows.
+            revisions[file.id] = t.fromRev + 1
+            delay(4000)
+            done(t)
+        }
+    }
+
+    fun done(t: Turn) {
+        if (turn === t) turn = null
     }
 }
