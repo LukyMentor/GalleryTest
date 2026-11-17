@@ -257,6 +257,12 @@ class MediaViewerViewModel(
                     )
 
                     SOURCE_BIN -> stream.map { provider.fetchTrashedFiles() }
+                    // One place on the map (falls back to everything if the set is gone).
+                    com.zs.gallery.files.RouteFiles.SOURCE_IDS -> stream.map {
+                        val ids = com.zs.gallery.files.PhotoSets.get(_args.third)
+                        if (ids == null) provider.fetchFiles(order = MediaProvider.COLUMN_DATE_MODIFIED, ascending = false)
+                        else provider.fetchFiles(ids = ids, order = MediaProvider.COLUMN_DATE_MODIFIED, ascending = false)
+                    }
                     SOURCE_FOLDER -> stream.map {
                         provider.fetchFilesFromDirectory(
                             _args.third!!,

@@ -51,6 +51,8 @@ object RouteFiles : Route {
     const val SOURCE_TIMELINE = "source_timeline"
     const val SOURCE_FOLDER = "source_folder"
     const val SOURCE_PICK = "source_pick"
+    /** A fixed set of photos (e.g. one place on the map), see [PhotoSets]. */
+    const val SOURCE_IDS = "source_ids"
 
     override val route: String = "$domain/{$PARAM_SOURCE}/{$PARAM_ARG}"
 
@@ -136,4 +138,19 @@ interface FilesViewState : SelectionTracker {
 
     /** Selects ([value] = true) or deselects all [ids] in one go; used by drag-to-select. */
     fun setSelected(ids: Collection<Long>, value: Boolean)
+}
+
+
+/**
+ * Sets of photo ids handed to the viewer (e.g. one place on the map), so swiping stays within
+ * that set instead of running into the rest of the timeline.
+ */
+object PhotoSets {
+    private val sets = HashMap<String, LongArray>()
+    fun put(ids: LongArray): String {
+        val key = "${ids.firstOrNull() ?: 0}_${ids.size}_${ids.contentHashCode()}"
+        synchronized(sets) { sets[key] = ids }
+        return key
+    }
+    fun get(key: String?): LongArray? = key?.let { synchronized(sets) { sets[it] } }
 }

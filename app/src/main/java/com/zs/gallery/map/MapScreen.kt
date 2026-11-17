@@ -76,6 +76,7 @@ import com.zs.core.store.PhotoLocations
 import com.zs.gallery.common.Route
 import com.zs.gallery.common.compose.LocalNavController
 import com.zs.gallery.files.RouteFiles
+import com.zs.gallery.files.PhotoSets
 import com.zs.gallery.files.thumbnailCacheKey
 import com.zs.gallery.viewer.RouteViewer
 
@@ -194,7 +195,12 @@ fun MapScreen() {
                     expanded = false
                 },
                 onOpen = { photo ->
-                    navController.navigate(RouteViewer(RouteFiles.SOURCE_TIMELINE, photo.id))
+                    navController.navigate(
+                        RouteViewer(
+                            RouteFiles.SOURCE_IDS, photo.id,
+                            PhotoSets.put(cluster.photos.map { it.id }.toLongArray())
+                        )
+                    )
                 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -215,7 +221,12 @@ fun MapScreen() {
                 cluster = shown,
                 onCollapse = { expanded = false },
                 onOpen = { photo ->
-                    navController.navigate(RouteViewer(RouteFiles.SOURCE_TIMELINE, photo.id))
+                    navController.navigate(
+                        RouteViewer(
+                            RouteFiles.SOURCE_IDS, photo.id,
+                            PhotoSets.put(shown.photos.map { it.id }.toLongArray())
+                        )
+                    )
                 }
             )
         }
