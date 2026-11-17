@@ -74,7 +74,8 @@ fun Modifier.blockVerticalDrag(): Modifier = pointerInput(Unit) {
 fun Modifier.dragToDismiss(
     enabled: () -> Boolean,
     offset: MutableFloatState,
-    onDismiss: () -> Unit,
+    onDismiss: (velocityY: Float) -> Unit,
+    onDragStart: (position: Offset) -> Unit = {},
     sheetOpen: () -> Boolean = { false },
     onSheetDrag: ((dy: Float) -> Unit)? = null,
     onSheetRelease: ((velocityY: Float) -> Unit)? = null,
@@ -123,7 +124,11 @@ fun Modifier.dragToDismiss(
                             change.consume()
                             continue
                         }
-                        total.y > 0 -> dragging = true
+                        total.y > 0 -> {
+                            dragging = true
+                            // Scale around the finger, so the spot you grabbed stays under it.
+                            onDragStart(down.position)
+                        }
                         else -> break
                     }
                 }
@@ -138,9 +143,12 @@ fun Modifier.dragToDismiss(
                 onSheetRelease?.invoke(if (released) velocity else 0f)
                 return@awaitEachGesture
             }
-            val threshold = 96.dp.toPx()
-            if (released && (offset.floatValue > threshold || velocity > 1200.dp.toPx())) {
-                onDismiss()
+            // Close on a downward flick, or when dragged far enough and not being pulled back up.
+            val far = offset.floatValue > size.height * 0.15f
+            val flick = velocity > 1000.dp.toPx()
+            val pullingBack = velocity < -300.dp.toPx()
+            if (released && (flick || (far && !pullingBack))) {
+                onDismiss(velocity.coerceAtLeast(0f))
                 return@awaitEachGesture
             }
             // Spring back to rest.

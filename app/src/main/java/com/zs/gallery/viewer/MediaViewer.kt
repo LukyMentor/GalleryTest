@@ -112,6 +112,10 @@ import me.saket.telephoto.zoomable.zoomable
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animate
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.first
@@ -146,8 +150,11 @@ private fun Modifier.closeGestures(
     enabled: () -> Boolean,
     dismissOffset: MutableFloatState,
     onClose: () -> Unit,
+    onDragDismiss: (velocityY: Float) -> Unit,
     sheet: DetailsSheetState? = null,
 ): Modifier {
+    // Point that was grabbed; scaling happens around it so it stays under the finger.
+    val pivot = remember { floatArrayOf(0.5f, 0.5f, 0f, 0f) } // fx, fy, x, y
     // Edge zone for the back swipe: the system gesture inset plus a little margin.
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
@@ -164,19 +171,26 @@ private fun Modifier.closeGestures(
         .dragToDismiss(
             enabled = enabled,
             offset = dismissOffset,
-            onDismiss = onClose,
+            onDismiss = onDragDismiss,
+            onDragStart = { p -> pivot[2] = p.x; pivot[3] = p.y },
             sheetOpen = { sheet?.isOpen == true },
             onSheetDrag = sheet?.let { s -> { dy: Float -> s.dragBy(dy) } },
             onSheetRelease = sheet?.let { s -> { v: Float -> s.settle(v) } }
         )
         .graphicsLayer {
-            // Follow the finger (and shrink slightly while dragging down to close).
+            // Follow the finger 1:1 and shrink slightly around the grabbed point.
             val offset = dismissOffset.floatValue
-            val progress = (offset / (size.height * 0.5f)).coerceIn(0f, 1f)
+            if (offset == 0f) return@graphicsLayer
+            val progress = (offset / size.height).coerceIn(0f, 1f)
             translationY = offset
-            val scale = 1f - 0.25f * progress
+            val scale = 1f - 0.35f * progress
             scaleX = scale
             scaleY = scale
+            if (size.width > 0f && size.height > 0f)
+                transformOrigin = TransformOrigin(
+                    (pivot[2] / size.width).coerceIn(0f, 1f),
+                    (pivot[3] / size.height).coerceIn(0f, 1f)
+                )
         }
 }
 
@@ -188,6 +202,7 @@ private fun Carousel(
     sharedElementEnabled: Boolean,
     onReady: () -> Unit,
     sheet: DetailsSheetState,
+    onDragDismiss: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val data = viewState.data
@@ -233,6 +248,7 @@ private fun Carousel(
             enabled = { focusedZoom?.isZoomedOut ?: true },
             dismissOffset = dismissOffset,
             onClose = { onRequest(EVENT_BACK_PRESS) },
+            onDragDismiss = onDragDismiss,
             sheet = sheet
         ),
         // Disable swipe when zoomed in
@@ -356,6 +372,27 @@ fun MediaViewer(viewState: MediaViewerViewState) {
         }
     }
     //
+    // Closing by dragging: the photo keeps moving the way it was flung and fades out, then the
+    // screen closes. The shared-element "fly back to the grid" is skipped in that case, as it
+    // would first snap the photo back to full screen.
+    var dismissedByDrag by remember { mutableStateOf(false) }
+    val dismissScope = rememberCoroutineScope()
+    val screenHeight = LocalWindowInfo.current.containerSize.height.toFloat()
+    val dragDismiss: (Float) -> Unit = { velocity ->
+        if (!dismissedByDrag) {
+            dismissedByDrag = true
+            dismissScope.launch {
+                val start = dismissOffset.floatValue
+                animate(
+                    initialValue = start,
+                    targetValue = start + screenHeight,
+                    initialVelocity = velocity,
+                    animationSpec = tween(durationMillis = 220, easing = LinearOutSlowInEasing)
+                ) { value, _ -> dismissOffset.floatValue = value }
+                onRequest(EVENT_BACK_PRESS)
+            }
+        }
+    }
     BackHandler { onRequest(EVENT_BACK_PRESS) }
     // Properties of the photo currently shown (for the sheet).
     val currentFile by remember {
@@ -484,9 +521,12 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                         .closeGestures(
                             enabled = { true },
                             dismissOffset = dismissOffset,
-                            onClose = { onRequest(EVENT_BACK_PRESS) }
+                            onClose = { onRequest(EVENT_BACK_PRESS) },
+                            onDragDismiss = dragDismiss
                         )
-                        .thenIf(!carouselReady) { RouteFiles.sharedElement(viewState.focused) },
+                        .thenIf(!carouselReady && !dismissedByDrag) {
+                            RouteFiles.sharedElement(viewState.focused)
+                        },
                 )
             // If data is loaded, display the Carousel with the media items (drawn on top).
             if (!isLoading)
@@ -494,9 +534,10 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                     viewState,
                     onRequest,
                     dismissOffset,
-                    sharedElementEnabled = carouselReady,
+                    sharedElementEnabled = carouselReady && !dismissedByDrag,
                     onReady = { carouselReady = true },
                     sheet = sheet,
+                    onDragDismiss = dragDismiss,
                     modifier = modifier
                 )
             // Swipe-up properties sheet, on top of everything, anchored to the bottom.

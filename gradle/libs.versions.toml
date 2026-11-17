@@ -65,6 +65,7 @@ androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling
 androidx-compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 androidx-google-fonts = { module = "androidx.compose.ui:ui-text-google-fonts", version = "1.12.1" }
 telephoto-zoomable = { module = "me.saket.telephoto:zoomable", version = "0.19.0" }
+osmdroid = { module = "org.osmdroid:osmdroid-android", version = "6.1.20" }
 telephoto-zoomable-image-coil3 = { module = "me.saket.telephoto:zoomable-image-coil3", version = "0.19.0" }
 
 # ─── Image Loading ───

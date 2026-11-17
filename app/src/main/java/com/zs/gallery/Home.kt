@@ -118,6 +118,9 @@ import com.zs.gallery.common.compose.LocalNavController
 import com.zs.gallery.common.compose.LocalSystemFacade
 import com.zs.gallery.common.compose.background
 import com.zs.gallery.common.compose.composable
+import com.zs.gallery.map.MapScreen
+import com.zs.gallery.map.RouteMap
+import androidx.compose.material.icons.filled.Public
 import com.zs.gallery.common.compose.preference
 import com.zs.gallery.common.compose.rememberAcrylicSurface
 import com.zs.gallery.common.compose.shine
@@ -178,6 +181,7 @@ private val NavController.primary: State<String?>
                 val isPrimary = when (dest.domain) {
                     RouteFiles.domain -> true
                     RouteFolders.domain -> true
+                    RouteMap.domain -> true
                   //  RouteSettings.domain -> true
                     else -> false
                 }
@@ -352,6 +356,9 @@ private val navGraphBuilder: NavGraphBuilder.() -> Unit = {
         Folders(viewState = state)
     }
 
+    // Map
+    composable(RouteMap) { MapScreen() }
+
     // Settings
     composable(RouteSettings) {
         val state = koinViewModel<SettingsViewModel>()
@@ -431,6 +438,16 @@ private fun NavigationBar(
             icon = { Icon(imageVector = Icons.Filled.FolderCopy, contentDescription = null) },
             selected = primary == RouteFolders.domain,
             onClick = { navController.toRoute(RouteFolders) },
+            isBottomNav = isBottomAligned,
+            colors = colors
+        )
+
+        // Map: where photos were taken.
+        NavigationItem(
+            label = { Label(text = "Map") },
+            icon = { Icon(imageVector = Icons.Filled.Public, contentDescription = null) },
+            selected = primary == RouteMap.domain,
+            onClick = { navController.toRoute(RouteMap) },
             isBottomNav = isBottomAligned,
             colors = colors
         )

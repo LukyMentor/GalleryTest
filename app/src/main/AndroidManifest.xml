@@ -20,7 +20,11 @@
     <uses-permission android:name="android.permission.MANAGE_MEDIA" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <!-- Required to access GPS Data of Media -->
-   <!-- <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />-->
+    <!-- Map tab: GPS position stored in photos (Android hides it without this). -->
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
+    <!-- Map tab only: downloading map tiles. Photos are never uploaded anywhere. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!--
         To handle the reselection within the app on devices running Android 14
         or higher if your app targets Android 14 (API level 34) or higher.

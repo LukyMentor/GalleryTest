@@ -177,6 +177,7 @@ dependencies {
     // Compose extensions
     implementation(libs.telephoto.zoomable)
     implementation(libs.telephoto.zoomable.image.coil3) // sharp (sub-sampled) zoom
+    implementation(libs.osmdroid) // Map tab
     implementation(libs.accompanist.permissions)
     implementation(libs.androidx.koin)
     implementation(libs.chrisbanes.haze)
