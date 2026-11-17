@@ -278,8 +278,10 @@ class FilesViewModel(
                 }
                 return@buildList
             }
-            // Add "Select All" action if not in timeline and not all items are selected
-            if (source != SOURCE_TIMELINE && !allSelected)
+            // "Select all" leads the header when nothing is selected; with a selection it goes to
+            // the end (into "⋮"), so the bottom bar looks the same everywhere.
+            val selectAll = source != SOURCE_TIMELINE && !allSelected
+            if (selectAll && !isInSelectionMode)
                 this += SELECT_ALL
             // Handle actions specific to the Bin source
             if (source == SOURCE_BIN && !isInSelectionMode) {
@@ -289,6 +291,7 @@ class FilesViewModel(
             // Handle actions for bin when not selected.
             else if (source == SOURCE_BIN) {
                 this += RESTORE; this += DELETE
+                if (selectAll) this += SELECT_ALL
             }
             // Handle actions for Timeline when not in selection mode
             else if (source == SOURCE_TIMELINE && !isInSelectionMode) {
@@ -310,12 +313,13 @@ class FilesViewModel(
             // - DELETE: For moving items to the bin.
             // - SHARE: For standard sharing options.
             else {
-                this += QUICK_SHARE; this += STAR; this += DELETE; this += SHARE
-                // Organising (only for selections, not the "unlike" action on favourites).
-                if (isInSelectionMode) {
-                    this += MOVE; this += COPY
-                    if (selection.size == 1) this += RENAME
-                }
+                // Same bar in Photos, folders and favourites: like, delete, share as buttons;
+                // the rest (quick share, organising, select all) in "⋮".
+                this += STAR; this += DELETE; this += SHARE
+                this += QUICK_SHARE
+                this += MOVE; this += COPY
+                if (selection.size == 1) this += RENAME
+                if (selectAll) this += SELECT_ALL
             }
         }
     }

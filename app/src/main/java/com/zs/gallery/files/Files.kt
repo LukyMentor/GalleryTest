@@ -221,7 +221,7 @@ fun Files(viewState: FilesViewState) {
                     OverflowMenu(
                         actions,
                         onItemClicked = { viewState.onRequest(it, ctx.findActivity()) },
-                        collapsed = 4,
+                        collapsed = 3,
                         compact = true
                     )
                 }
