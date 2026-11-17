@@ -596,6 +596,13 @@ fun Home(
                     when {
                         useAccent -> Background(colors.accent)
                         !portrait -> Background(colors.background(2.dp))
+                        // Dark mode: give the bar the same Very Peri tint it has in light mode
+                        // (there the light background already carries the purple).
+                        !colors.isLight -> colors.background(
+                            surface,
+                            containerColor = colors.accent.copy(alpha = 0.30f)
+                                .compositeOver(Color(0xFF16161D))
+                        )
                         else -> colors.background(surface)
                     },
                     if (useAccent) colors.onAccent else colors.onBackground,
