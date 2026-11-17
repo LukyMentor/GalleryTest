@@ -459,7 +459,12 @@ private fun NavigationBar(
             selectedText = if (onAccentBar) contentColor else colors.accent,
             unselected = if (onAccentBar) colors.onAccent else colors.onBackground,
         )
-        val primary by navController.primary
+        val currentTab by navController.primary
+        // Keep showing the last tab while on other screens (e.g. a photo), so coming back
+        // doesn't "re-select" it with an animation; animations are only for real tab switches.
+        val lastTab = remember { arrayOfNulls<String>(1) }
+        if (currentTab != null) lastTab[0] = currentTab
+        val primary = lastTab[0]
 
         // Photos (timeline)
         AnimatedNavItem(
@@ -762,9 +767,14 @@ private fun AnimatedNavItem(
     val textColor by animateColorAsState(
         if (selected) colors.selectedText else colors.unselected, label = "nav_text_c"
     )
-    // Small bounce of the icon when it becomes selected.
+    // Small bounce of the icon when it becomes selected (not when the bar first appears).
     val scale = remember { androidx.compose.animation.core.Animatable(1f) }
+    val firstRun = remember { booleanArrayOf(true) }
     LaunchedEffect(selected) {
+        if (firstRun[0]) {
+            firstRun[0] = false
+            return@LaunchedEffect
+        }
         if (selected) {
             scale.snapTo(0.8f)
             scale.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessMedium))

@@ -113,6 +113,8 @@ import me.saket.telephoto.zoomable.zoomable
 import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -165,6 +167,7 @@ private class DismissController(
     private val scope: CoroutineScope,
     private val density: Float,
     private val close: () -> Unit,
+    private val onThresholdCrossed: () -> Unit,
 ) {
     private val anim = Animatable(0f)
     /** Current offset in px; read it in draw/graphics-layer lambdas. */
@@ -174,20 +177,31 @@ private class DismissController(
         private set
     var screenHeight = 0f
 
+    /**
+     * The one and only distance after which letting go closes the photo (~a fifth of the
+     * screen). Speed doesn't matter, so it behaves the same with or without system animations.
+     */
+    private val threshold: Float
+        get() = maxOf((if (screenHeight > 0f) screenHeight else 2000f) * 0.2f, 120f * density)
+
+    /** Whether letting go now would close; a light haptic tick marks crossing the line. */
+    private var armed = false
+
     fun dragBy(dy: Float) {
         if (dismissed) return
-        scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            anim.snapTo((anim.value + dy).coerceAtLeast(0f))
-        }
+        // Apply synchronously from the known value so no event is lost, even with animations off.
+        val target = (anim.value + dy).coerceAtLeast(0f)
+        scope.launch(start = CoroutineStart.UNDISPATCHED) { anim.snapTo(target) }
+        val nowArmed = target >= threshold
+        if (nowArmed && !armed) onThresholdCrossed()
+        armed = nowArmed
     }
 
     fun end(velocityY: Float, released: Boolean) {
         if (dismissed) return
         val height = if (screenHeight > 0f) screenHeight else 2000f
-        val flick = velocityY > 1000f * density
-        val far = anim.value > height * 0.15f
-        val pullingBack = velocityY < -300f * density
-        if (released && (flick || (far && !pullingBack))) {
+        armed = false
+        if (released && anim.value >= threshold) {
             dismissed = true
             scope.launch {
                 // Keep moving the way it was flung, fading out with the background.
@@ -421,8 +435,14 @@ fun MediaViewer(viewState: MediaViewerViewState) {
     val dismissScope = rememberCoroutineScope()
     val density = LocalDensity.current.density
     val closeRequest = remember { arrayOfNulls<() -> Unit>(1) }
+    val haptic = LocalHapticFeedback.current
     val dismissOffset = remember {
-        DismissController(dismissScope, density) { closeRequest[0]?.invoke() }
+        DismissController(
+            dismissScope,
+            density,
+            close = { closeRequest[0]?.invoke() },
+            onThresholdCrossed = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
+        )
     }
     dismissOffset.screenHeight = LocalWindowInfo.current.containerSize.height.toFloat()
     val isDragging by remember { derivedStateOf { dismissOffset.offset != 0f } }

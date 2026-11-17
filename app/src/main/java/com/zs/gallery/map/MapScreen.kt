@@ -132,6 +132,46 @@ private fun probe(url: String): String? = try {
     e.javaClass.simpleName + (e.message?.let { ": $it" } ?: "")
 }
 
+/**
+ * Asks Android whether this app's network access is blocked (per-app data/Wi-Fi switch,
+ * firewall, VPN lockdown...). Null if unknown.
+ */
+private suspend fun isNetworkBlockedForApp(context: android.content.Context): Boolean? {
+    val cm = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return null
+    return kotlinx.coroutines.withTimeoutOrNull(2000) {
+        kotlinx.coroutines.suspendCancellableCoroutine { cont ->
+            val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onBlockedStatusChanged(network: android.net.Network, blocked: Boolean) {
+                    if (cont.isActive) cont.resumeWith(Result.success(blocked))
+                }
+            }
+            try {
+                cm.registerDefaultNetworkCallback(callback)
+            } catch (e: Exception) {
+                cont.resumeWith(Result.success(null))
+                return@suspendCancellableCoroutine
+            }
+            cont.invokeOnCancellation { runCatching { cm.unregisterNetworkCallback(callback) } }
+            // Unregister once we have an answer.
+            cont.context[kotlinx.coroutines.Job]?.invokeOnCompletion {
+                runCatching { cm.unregisterNetworkCallback(callback) }
+            }
+        }
+    }
+}
+
+/** Turns probe failures into something a person can act on. */
+private suspend fun explain(context: android.content.Context, carto: String, osm: String): String {
+    val dnsFailure = carto.startsWith("UnknownHost") && osm.startsWith("UnknownHost")
+    if (!dnsFailure) return "Map can't load (CARTO: $carto · OSM: $osm). Tap to retry."
+    val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+    if (cm?.activeNetwork == null) return "No internet connection. Tap to retry."
+    return if (isNetworkBlockedForApp(context) == true)
+        "Android is blocking internet for M Gallery. Allow it in App info → Mobile data & Wi-Fi, then tap to retry."
+    else
+        "M Gallery can't look up the map servers. Check the app's network access, a firewall/ad-blocker app or Private DNS. Tap to retry."
+}
+
 @Composable
 fun MapScreen() {
     val context = LocalContext.current
@@ -161,7 +201,9 @@ fun MapScreen() {
     // Which tile server works (checked once per visit): CARTO first, OpenStreetMap as fallback.
     var useOsm by remember { mutableStateOf(false) }
     var tileError by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) {
+    var attempt by remember { mutableStateOf(0) }
+    LaunchedEffect(attempt) {
+        tileError = null
         val carto = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             probe("https://a.basemaps.cartocdn.com/rastertiles/voyager/2/2/1@2x.png")
         }
@@ -170,7 +212,7 @@ fun MapScreen() {
             probe("https://tile.openstreetmap.org/2/2/1.png")
         }
         if (osm == null) useOsm = true
-        else tileError = "Map can't load (CARTO: $carto · OSM: $osm)"
+        else tileError = explain(context, carto, osm)
     }
     val mapHolder = remember { arrayOfNulls<MapView>(1) }
 
@@ -253,6 +295,8 @@ fun MapScreen() {
                 modifier = Modifier
                     .shadow(6.dp, RoundedCornerShape(50))
                     .background(colors.background(2.dp), RoundedCornerShape(50))
+                    .clip(RoundedCornerShape(50))
+                    .clickable(enabled = tileError != null) { attempt++ }
                     .padding(horizontal = 14.dp, vertical = 8.dp)
             ) {
                 Icon(Icons.Outlined.Public, contentDescription = null, tint = colors.accent)
@@ -265,7 +309,7 @@ fun MapScreen() {
                         else -> "${photos.size} photos with a location"
                     },
                     fontWeight = FontWeight.Medium,
-                    maxLines = 3
+                    maxLines = 5
                 )
             }
             Label(
