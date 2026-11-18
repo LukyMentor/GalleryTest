@@ -521,7 +521,7 @@ class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
         }
     }
 
-    /** "Edit with M Gallery" (e.g. from the screenshot pop-up): straight into the crop screen. */
+    /** "Edit with Gallery M" (e.g. from the screenshot pop-up): straight into the crop screen. */
     private fun openCrop(intent: Intent) {
         val uri = intent.data ?: return
         lifecycleScope.launch {
@@ -571,7 +571,7 @@ class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
             if (com.zs.gallery.common.CrashLog.consumeUnseen(this))
                 android.widget.Toast.makeText(
                     this,
-                    "M Gallery crashed last time. Details: Settings → Crash log",
+                    "Gallery M crashed last time. Details: Settings → Crash log",
                     android.widget.Toast.LENGTH_LONG
                 ).show()
         }
@@ -594,7 +594,7 @@ class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
                 snackbarHostState,
                 navController
             )
-            // Opened via "Edit with M Gallery": crop it (not when the app lock is on).
+            // Opened via "Edit with Gallery M": crop it (not when the app lock is on).
             LaunchedEffect(Unit) {
                 if (isColdStart && intent.action == Intent.ACTION_EDIT && !isAuthenticationRequired)
                     openCrop(intent)

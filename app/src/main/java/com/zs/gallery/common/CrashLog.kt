@@ -43,7 +43,7 @@ object CrashLog {
             context.packageManager.getPackageInfo(context.packageName, 0).versionName
         }.getOrNull()
         val text = buildString {
-            appendLine("M Gallery crash")
+            appendLine("Gallery M crash")
             appendLine("Time: " + SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
             appendLine("App: $version")
             appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")

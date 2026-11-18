@@ -672,7 +672,7 @@ private fun CrashLogCard() {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             com.zs.gallery.files.FilterChip("Copy", true) {
                 val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
-                clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("M Gallery crash", text))
+                clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Gallery M crash", text))
                 android.widget.Toast.makeText(context, "Crash log copied", android.widget.Toast.LENGTH_SHORT).show()
             }
             com.zs.gallery.files.FilterChip("Clear", false) {
@@ -685,7 +685,7 @@ private fun CrashLogCard() {
 
 
 /**
- * "Media management" special access: with it, Android stops asking "Allow M Gallery to move this
+ * "Media management" special access: with it, Android stops asking "Allow Gallery M to move this
  * photo to trash?" (and the same for moving/renaming) every single time.
  */
 @Composable

@@ -241,8 +241,28 @@ class MediaViewerViewModel(
             firstUpdate = false
             delay(350)
         }
+        lastValues = values
         data = if (removed.isEmpty()) values else values.filterNot { it.id in removed }
     }
+    private var lastValues: List<MediaFile> = emptyList()
+
+    override fun hide(id: Long) {
+        removed += id
+        data = data.filterNot { it.id == id }
+    }
+
+    override fun unhide(id: Long) {
+        if (!removed.remove(id)) return
+        val source = lastValues.ifEmpty { return }
+        data = source.filterNot { it.id in removed }
+    }
+
+    override fun deleteFile(activity: android.app.Activity, id: Long) {
+        if (source == SOURCE_BIN) delete(activity, id) else remove(activity, id)
+    }
+
+    // Deleting was declined or failed: the photo comes back.
+    override fun onRemoveFailed(ids: LongArray) = ids.forEach(::unhide)
 
     init {
         // Reuse the list the grid already loaded (same order) instead of querying the whole
@@ -253,7 +273,7 @@ class MediaViewerViewModel(
             firstUpdate = false
             viewModelScope.launch {
                 delay(300)
-                if (data.isEmpty()) data = cached
+                if (data.isEmpty()) { data = cached; lastValues = cached }
             }
         }
         @Suppress("NewApi")

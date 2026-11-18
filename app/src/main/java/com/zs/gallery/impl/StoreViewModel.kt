@@ -107,7 +107,7 @@ abstract class StoreViewModel(val provider: MediaProvider): KoinViewModel(){
             // Display a message based on the result of the deletion operation.
             if (result == null || result == 0 || result == -1)
                 showPlatformToast(R.string.msg_files_delete_unknown_error)// General error
-            else if (result > 0) onRemoved(id)
+            if (result != null && result > 0) onRemoved(id) else onRemoveFailed(id)
         }
     }
 
@@ -123,7 +123,7 @@ abstract class StoreViewModel(val provider: MediaProvider): KoinViewModel(){
             // General error
             if (result == null || result == 0 || result == -1)
                 showPlatformToast(R.string.msg_files_trash_unknown_error)
-            else if (result > 0) onRemoved(id)
+            if (result != null && result > 0) onRemoved(id) else onRemoveFailed(id)
         }
     }
 
@@ -132,6 +132,9 @@ abstract class StoreViewModel(val provider: MediaProvider): KoinViewModel(){
      * the change (which takes a while): screens can drop them from their list right away.
      */
     protected open fun onRemoved(ids: LongArray) {}
+
+    /** Deleting / moving to the bin was declined or failed. */
+    protected open fun onRemoveFailed(ids: LongArray) {}
 
     /** Deletes or Trashes file(s) represented by id(s).*/
     fun remove(resolver: Activity, vararg id: Long) {

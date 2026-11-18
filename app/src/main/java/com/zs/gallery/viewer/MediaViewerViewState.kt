@@ -74,6 +74,13 @@ interface MediaViewerViewState {
 
     val data: List<MediaFile>
 
+    /** Takes a photo out of the list right away (it's being deleted); [unhide] brings it back. */
+    fun hide(id: Long) {}
+    fun unhide(id: Long) {}
+
+    /** Deletes (or moves to the bin) one photo by id, whatever is focused by then. */
+    fun deleteFile(activity: android.app.Activity, id: Long) {}
+
     val details: MediaFile?
     var showDetails: Boolean
 

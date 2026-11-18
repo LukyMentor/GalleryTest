@@ -641,8 +641,9 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                             rotator.rotate(ctx.findActivity(), file, it.label == R.string.rotate_right, zoomHolder.value)
                         it.label == R.string.delete && file != null -> {
                             val activity = ctx.findActivity()
-                            deleter.delete(activity, file.id, exists = { id -> viewState.data.any { f -> f.id == id } }) {
-                                viewState.onPerformAction(it, activity)
+                            // By id: by the time it runs, the next photo is the focused one.
+                            deleter.delete(file.id, hide = { viewState.hide(file.id) }) {
+                                viewState.deleteFile(activity, file.id)
                             }
                         }
                         else -> viewState.onPerformAction(it, ctx.findActivity())
@@ -844,55 +845,29 @@ internal class Deleter(private val scope: CoroutineScope) {
     var appearing by mutableStateOf<Animatable<Float, androidx.compose.animation.core.AnimationVector1D>?>(null)
         private set
 
-    fun delete(activity: Activity, id: Long, exists: (Long) -> Boolean, perform: () -> Unit) {
+    fun delete(id: Long, hide: () -> Unit, perform: () -> Unit) {
         if (fading != null) return
         val f = Fade(id)
         fading = f
         scope.launch {
             val spec = tween<Float>(durationMillis = 200, easing = FastOutSlowInEasing)
-            // Was a system "move to trash?" screen shown (the app gets paused)?
-            var paused = false
-            val owner = activity as? androidx.lifecycle.LifecycleOwner
-            val observer = androidx.lifecycle.LifecycleEventObserver { _, e ->
-                if (e == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) paused = true
-            }
-            owner?.lifecycle?.addObserver(observer)
-            // Fade out first, *then* delete: Android's (invisible, auto-approved) confirmation
-            // screen freezes the display for a moment while it opens - started together with
-            // the fade it swallowed the whole animation (seen in the screen recording). Now that
-            // freeze falls on the empty frame between this photo and the next one.
+            // 1. The photo fades and shrinks away.
             launch { f.scale.animateTo(0.88f, spec) }
             f.alpha.animateTo(0f, spec)
             hidden += id
-            perform()
-            // Gone within a moment (or a moment after the dialog closed)?
-            var gone = false
-            var deadline = System.currentTimeMillis() + 3000
-            var waited = false
-            while (true) {
-                if (!exists(id)) { gone = true; break }
-                val resumed = owner?.lifecycle?.currentState?.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) != false
-                if (paused && !resumed) { waited = true; delay(100); continue }   // dialog still open
-                // Dialog just closed: give the list a moment to update.
-                if (waited) { waited = false; deadline = System.currentTimeMillis() + 2000 }
-                if (System.currentTimeMillis() > deadline) break
-                delay(50)
-            }
-            owner?.lifecycle?.removeObserver(observer)
-            if (!gone) {
-                // Declined: bring it back.
-                hidden -= id
-                launch { f.scale.animateTo(1f, spec) }
-                f.alpha.animateTo(1f, spec)
-                fading = null
-                return@launch
-            }
-            // The next photo slides into its place: fade it in.
+            // 2. It leaves the list at once and the next photo fades in (if the deletion is
+            //    declined, the photo comes back).
+            hide()
             val a = Animatable(0f)
             appearing = a
             fading = null
-            a.animateTo(1f, tween(180))
+            a.animateTo(1f, tween(160))
             appearing = null
+            hidden -= id
+            // 3. Only now delete: Android's (invisible, auto-approved) confirmation screen
+            //    freezes the display for a moment, which now lands on a still photo instead of
+            //    swallowing an animation or showing black.
+            perform()
         }
     }
 }
