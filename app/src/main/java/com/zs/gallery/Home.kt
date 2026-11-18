@@ -617,6 +617,11 @@ fun Home(
             val crop = com.zs.gallery.crop.RouteCrop.domain
             if (domain == RouteViewer.domain && previous != null && previous != RouteViewer.domain && previous != crop)
                 com.zs.gallery.viewer.Backdrop.capture(activity.window)
+            // Only the Map's full-screen grid hides the tab bar; anywhere else it must come back
+            // (safety net - a stale "hidden" once left it missing on every tab).
+            if (domain != RouteMap.domain &&
+                (activity as SystemFacade).style.flagNavBarVisibility == WindowStyle.FLAG_APP_NAV_BAR_HIDDEN
+            ) (activity as SystemFacade).style += WindowStyle.FLAG_APP_NAV_BAR_VISIBILITY_AUTO
             // Left the photo for good (not just to crop it): drop the picture once it has closed.
             else if (domain != RouteViewer.domain && domain != crop)
                 com.zs.gallery.viewer.Backdrop.clearLater()

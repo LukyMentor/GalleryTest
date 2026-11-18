@@ -139,6 +139,17 @@ value class WindowStyle(val value: Int = FLAG_STYLE_AUTO) {
         return WindowStyle(value and mask.inv())
     }
 
+    /**
+     * [original]'s system-bar settings with *this* style's app navigation-bar settings: for a
+     * screen that changed the system bars and puts them back, without also bringing back a
+     * stale "tab bar hidden" from when it opened (that left the tab bar gone everywhere).
+     */
+    fun withSystemBarsOf(original: WindowStyle): WindowStyle {
+        val nav = flagNavBarVisibility or flagNavBarPosition
+        val originalNav = original.flagNavBarVisibility or original.flagNavBarPosition
+        return WindowStyle((original.value xor originalNav) or nav)
+    }
+
     override fun toString(): String {
         return "WindowStyle(value=$value)"
     }

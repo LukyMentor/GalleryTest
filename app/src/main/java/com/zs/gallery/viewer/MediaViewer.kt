@@ -541,7 +541,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
     // already in place when the grid appears - no layout jump afterwards.
     val originalStyle = remember { arrayOfNulls<WindowStyle>(1) }
     val restoreStyle = {
-        originalStyle[0]?.let { facade.style = it }
+        originalStyle[0]?.let { facade.style = facade.style.withSystemBarsOf(it) }
         immersive = false
     }
     val onRequest: (Int) -> Unit = { request: Int ->
@@ -773,8 +773,8 @@ fun MediaViewer(viewState: MediaViewerViewState) {
         facade.style =
             original + WindowStyle.FLAG_SYSTEM_BARS_APPEARANCE_DARK + WindowStyle.FLAG_SYSTEM_BARS_BG_TRANSPARENT
         onDispose {
-            // Reset to default on disposal
-            facade.style = original
+            // Put the system bars back (only those - the tab bar is managed by its screens).
+            facade.style = facade.style.withSystemBarsOf(original)
         }
     }
 }
