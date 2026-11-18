@@ -336,6 +336,32 @@ private fun PersonTile(person: Person, onClick: () -> Unit) {
     }
 }
 
+/** Photos grouped by day ("Today", "3 days ago", "12 March 2025"…), newest first. */
+private suspend fun byDay(context: Context, ids: List<Long>): com.zs.gallery.common.Mapped<com.zs.core.store.MediaFile> {
+    if (ids.isEmpty()) return emptyMap()
+    val provider = com.zs.core.store.MediaProvider(context)
+    val files = ids.chunked(500).flatMap { provider.fetchFiles(*it.toLongArray()) }
+    val sorted = files.distinctBy { it.id }.sortedByDescending { it.timelineDate }
+    val now = System.currentTimeMillis()
+    val zone = java.util.TimeZone.getDefault()
+    val result = LinkedHashMap<CharSequence, MutableList<com.zs.core.store.MediaFile>>()
+    var currentDay = Long.MIN_VALUE
+    var current: MutableList<com.zs.core.store.MediaFile>? = null
+    for (file in sorted) {
+        val time = file.timelineDate
+        val day = Math.floorDiv(time + zone.getOffset(time), android.text.format.DateUtils.DAY_IN_MILLIS)
+        if (day != currentDay || current == null) {
+            currentDay = day
+            val label = android.text.format.DateUtils.getRelativeTimeSpanString(
+                time, now, android.text.format.DateUtils.DAY_IN_MILLIS
+            ).toString()
+            current = result.getOrPut(label) { ArrayList() }
+        }
+        current!!.add(file)
+    }
+    return result
+}
+
 /** Photo ids sorted newest first (by date taken). */
 private fun sortedByDate(context: Context, ids: List<Long>): List<Long> {
     if (ids.isEmpty()) return ids
@@ -370,9 +396,26 @@ fun PersonScreen(id: Long) {
         value = withContext(Dispatchers.IO) { store.person(id) }
     }
     // Same as above: back from a photo, the grid is still where it was.
-    val photos by produceState(LastLists.photos[id] ?: emptyList(), version) {
-        value = withContext(Dispatchers.IO) { sortedByDate(context, store.photosOf(id)) }
+    // Photos grouped by day, like the Photos tab.
+    val sections by produceState(LastLists.photos[id] ?: emptyMap(), version) {
+        value = withContext(Dispatchers.IO) { byDay(context, store.photosOf(id)) }
         LastLists.photos[id] = value
+    }
+    val photos = remember(sections) { sections.values.flatten().map { it.id } }
+    val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    // Section layout for the fast scroller (1 leading item: the header).
+    val index = remember(sections) {
+        sections.takeIf { it.isNotEmpty() }?.let { com.zs.gallery.files.TimelineIndex(it, true, 1) }
+    }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val gridColumns by remember(density) {
+        androidx.compose.runtime.derivedStateOf {
+            with(density) {
+                val available = gridState.layoutInfo.viewportSize.width
+                val gap = 2.dp.roundToPx()
+                maxOf((available + gap) / (100.dp.roundToPx() + gap), 1)
+            }
+        }
     }
     val selected = remember { mutableStateListOf<Long>() }
     // What the person picker is for: moving photos, or merging this whole person.
@@ -388,6 +431,7 @@ fun PersonScreen(id: Long) {
 
     Box(Modifier.fillMaxSize().background(colors.background)) {
         LazyVerticalGrid(
+            state = gridState,
             columns = GridCells.Adaptive(100.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -451,7 +495,15 @@ fun PersonScreen(id: Long) {
                     }
                 }
             }
-            items(photos, key = { it }) { media ->
+            for ((label, files) in sections) {
+            // Day header (compact) + that day's photos + a small gap.
+            item(span = { GridItemSpan(maxLineSpan) }, key = "h_$label", contentType = "header") {
+                com.zs.compose.theme.text.TonalHeader(
+                    label, modifier = Modifier.padding(start = 6.dp, top = 6.dp, bottom = 4.dp)
+                )
+            }
+            items(files, key = { it.id }) { file ->
+                val media = file.id
                 val isSelected = media in selected
                 AsyncImage(
                     model = remember(media) {
@@ -478,7 +530,21 @@ fun PersonScreen(id: Long) {
                         )
                 )
             }
+            item(span = { GridItemSpan(maxLineSpan) }, key = "s_$label", contentType = "spacer") {
+                Spacer(Modifier.height(6.dp))
+            }
+            }
         }
+        // The month slider, like in Photos.
+        if (index != null)
+            com.zs.gallery.files.TimelineFastScroller(
+                state = gridState,
+                index = index,
+                columns = gridColumns,
+                topPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
+                bottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 96.dp,
+                modifier = Modifier.matchParentSize()
+            )
         ViewerActions(
             visible = selected.isNotEmpty(),
             actions = listOf(MOVE_TO_PERSON, NOT_THIS_PERSON),
@@ -529,7 +595,7 @@ private const val NEW_PERSON = -2L
 /** Last loaded lists, shown at once when a screen comes back (keeps scroll positions). */
 private object LastLists {
     var people: List<Person> = emptyList()
-    val photos = HashMap<Long, List<Long>>()
+    val photos = HashMap<Long, com.zs.gallery.common.Mapped<com.zs.core.store.MediaFile>>()
 }
 
 /** A sheet with everyone's face to choose from (plus "New person" when moving photos). */
