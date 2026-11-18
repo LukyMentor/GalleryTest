@@ -48,7 +48,8 @@ import com.zs.compose.theme.menu.DropDownMenu
 import com.zs.compose.theme.menu.DropDownMenuItem
 import com.zs.gallery.common.Action
 
-private val ButtonSize = 56.dp
+// Same visual size as the Photos / Folders / Map bar (was 56 dp).
+private val ButtonSize = 46.dp
 private val ButtonColor = Color(0xFF1C1C22).copy(alpha = 0.72f)
 
 /**
@@ -71,9 +72,9 @@ fun ViewerActions(
         modifier = modifier
     ) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             leading?.invoke()
             for (action in actions.take(visibleCount)) {
@@ -143,7 +144,7 @@ private fun RoundButton(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = if (enabled) tint else tint.copy(alpha = 0.4f),
-            modifier = Modifier.size(26.dp)
+            modifier = Modifier.size(22.dp)
         )
     }
 }
@@ -164,7 +165,7 @@ fun CountBubble(count: Int) {
             text = "$count",
             color = com.zs.compose.theme.AppTheme.colors.onAccent,
             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-            style = com.zs.compose.theme.AppTheme.typography.title3
+            style = com.zs.compose.theme.AppTheme.typography.body1
         )
     }
 }
