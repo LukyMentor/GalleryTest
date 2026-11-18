@@ -235,8 +235,10 @@ fun PeopleScreen() {
     val colors = AppTheme.colors
     LaunchedEffect(Unit) { FaceIndexer.start(context) }
     val version by FaceIndexer.version.collectAsState()
-    val people by produceState(emptyList<Person>(), version) {
+    // Starts from the last list (not empty), so coming back from a person keeps the scroll position.
+    val people by produceState(LastLists.people, version) {
         value = withContext(Dispatchers.IO) { FaceIndexer.store(context).people() }
+        LastLists.people = value
     }
     var showAll by rememberSaveable { mutableStateOf(false) }
     var showHidden by rememberSaveable { mutableStateOf(false) }
@@ -364,11 +366,13 @@ fun PersonScreen(id: Long) {
     val colors = AppTheme.colors
     val version by FaceIndexer.version.collectAsState()
     val store = remember { FaceIndexer.store(context) }
-    val person by produceState<Person?>(null, version) {
+    val person by produceState(LastLists.people.firstOrNull { it.id == id }, version) {
         value = withContext(Dispatchers.IO) { store.person(id) }
     }
-    val photos by produceState(emptyList<Long>(), version) {
+    // Same as above: back from a photo, the grid is still where it was.
+    val photos by produceState(LastLists.photos[id] ?: emptyList(), version) {
         value = withContext(Dispatchers.IO) { sortedByDate(context, store.photosOf(id)) }
+        LastLists.photos[id] = value
     }
     val selected = remember { mutableStateListOf<Long>() }
     // What the person picker is for: moving photos, or merging this whole person.
@@ -521,6 +525,12 @@ fun PersonScreen(id: Long) {
 }
 
 private const val NEW_PERSON = -2L
+
+/** Last loaded lists, shown at once when a screen comes back (keeps scroll positions). */
+private object LastLists {
+    var people: List<Person> = emptyList()
+    val photos = HashMap<Long, List<Long>>()
+}
 
 /** A sheet with everyone's face to choose from (plus "New person" when moving photos). */
 @Composable
