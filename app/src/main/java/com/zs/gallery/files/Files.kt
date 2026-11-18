@@ -96,6 +96,9 @@ import com.zs.gallery.common.compose.FloatingActionMenu
 import com.zs.gallery.common.compose.FloatingLargeTopAppBar
 import com.zs.gallery.viewer.CountBubble
 import com.zs.gallery.viewer.ViewerActions
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import com.zs.gallery.common.compose.LocalNavController
 import com.zs.gallery.common.compose.LocalSystemFacade
 import com.zs.gallery.common.compose.OverflowMenu
@@ -193,11 +196,20 @@ fun Files(viewState: FilesViewState) {
         //
         floatingActionButton = {
             // Same big round buttons as the photo viewer: count, like, delete, share, "⋮".
+            // While the bar fades away after the selection is cleared, keep showing what it showed
+            // (the count and the selection buttons), not the "nothing selected" ones.
+            val selecting = viewState.isInSelectionMode
+            var shownActions by remember { mutableStateOf(actions) }
+            var shownCount by remember { mutableIntStateOf(0) }
+            if (selecting) {
+                shownActions = actions
+                shownCount = viewState.selectedCount
+            }
             ViewerActions(
-                visible = viewState.isInSelectionMode,
-                actions = actions,
-                onAction = { viewState.onRequest(it, ctx.findActivity()) },
-                leading = { CountBubble(viewState.selectedCount) },
+                visible = selecting,
+                actions = shownActions,
+                onAction = { if (viewState.isInSelectionMode) viewState.onRequest(it, ctx.findActivity()) },
+                leading = { CountBubble(shownCount) },
                 modifier = Modifier.windowInsetsPadding(
                     (if (compact) inAppNavInsets else WindowInsets.None).union(WindowInsets.systemBars)
                         .only(WindowInsetsSides.Bottom + WindowInsetsSides.End)
