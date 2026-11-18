@@ -48,8 +48,11 @@ fun countLabel(images: Int, videos: Int): String {
  * person_id: > 0 a person, 0 = not grouped yet, -1 = "not this person" (kept out of groups).
  * locked: set by the user (moved / removed), never changed by automatic grouping.
  */
+/** Others (who matter) needed in a photo to call it a group photo. */
+private const val MIN_OTHERS = 3
+
 internal class FaceStore(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "faces.db", null, 3) {
+    SQLiteOpenHelper(context.applicationContext, "faces.db", null, 4) {
 
     private val crops = java.io.File(context.applicationContext.filesDir, "face_crops")
 
@@ -81,6 +84,7 @@ internal class FaceStore(context: Context) :
         db.execSQL("CREATE INDEX faces_media ON faces(media_id)")
         db.execSQL("CREATE INDEX faces_person ON faces(person_id)")
         db.execSQL("CREATE TABLE persons (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, hidden INTEGER DEFAULT 0, cover_face INTEGER)")
+        createPhotoKind(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -88,6 +92,12 @@ internal class FaceStore(context: Context) :
         if (oldVersion < 2) db.execSQL("ALTER TABLE faces ADD COLUMN kind INTEGER DEFAULT 0")
         // 3: picture chosen by the user.
         if (oldVersion < 3) db.execSQL("ALTER TABLE persons ADD COLUMN cover_face INTEGER")
+        // 4: user's "group photo" / "just them" choices.
+        if (oldVersion < 4) createPhotoKind(db)
+    }
+
+    private fun createPhotoKind(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS photo_kind (person_id INTEGER, media_id INTEGER, grp INTEGER, PRIMARY KEY (person_id, media_id))")
     }
 
     // --- scanning ---------------------------------------------------------------------------
@@ -217,6 +227,60 @@ internal class FaceStore(context: Context) :
     }
 
     // --- user edits ---------------------------------------------------------------------------
+
+    /**
+     * Which of [personId]'s photos are group photos.
+     *
+     * A group photo has at least [MIN_OTHERS] other people who matter (named, or in several
+     * photos - strangers in the background don't count) and this person isn't clearly the main
+     * face (their face isn't much bigger than everyone else's). The user's own choices win.
+     */
+    fun groupPhotosOf(personId: Long): Set<Long> {
+        val db = readableDatabase
+        val names = names()
+        val counts = HashMap<Long, Int>()
+        db.rawQuery("SELECT person_id, COUNT(DISTINCT media_id) FROM faces WHERE person_id > 0 GROUP BY person_id", null).use { c ->
+            while (c.moveToNext()) counts[c.getLong(0)] = c.getInt(1)
+        }
+        fun matters(p: Long) = p > 0 && (names[p] != null || (counts[p] ?: 0) >= 3)
+        class F(val person: Long, val area: Float, val real: Boolean)
+        val byMedia = HashMap<Long, MutableList<F>>()
+        db.rawQuery(
+            "SELECT media_id, person_id, x1, y1, x2, y2, LENGTH(embedding) FROM faces " +
+                    "WHERE media_id IN (SELECT media_id FROM faces WHERE person_id = ?)",
+            arrayOf("$personId")
+        ).use { c ->
+            while (c.moveToNext()) {
+                val area = (c.getFloat(4) - c.getFloat(2)) * (c.getFloat(5) - c.getFloat(3))
+                byMedia.getOrPut(c.getLong(0)) { ArrayList() } += F(c.getLong(1), area, c.getInt(6) > 0)
+            }
+        }
+        val result = HashSet<Long>()
+        for ((media, faces) in byMedia) {
+            val others = faces.filter { it.person != personId && matters(it.person) }.map { it.person }.toSet()
+            if (others.size < MIN_OTHERS) continue
+            val mine = faces.filter { it.person == personId && it.real }.maxOfOrNull { it.area }
+            val biggestOther = faces.filter { it.person != personId && it.real }.maxOfOrNull { it.area } ?: 0f
+            // Clearly the main face (e.g. a selfie with friends behind): not a group photo.
+            if (mine != null && mine >= biggestOther * 1.8f) continue
+            result += media
+        }
+        // The user's own choices.
+        db.rawQuery("SELECT media_id, grp FROM photo_kind WHERE person_id = ?", arrayOf("$personId")).use { c ->
+            while (c.moveToNext()) if (c.getInt(1) == 1) result += c.getLong(0) else result -= c.getLong(0)
+        }
+        return result
+    }
+
+    /** The user says these photos of [personId] are (not) group photos. */
+    fun setGroup(personId: Long, mediaIds: Collection<Long>, group: Boolean) {
+        inTransaction {
+            for (m in mediaIds)
+                writableDatabase.insertWithOnConflict("photo_kind", null, ContentValues().apply {
+                    put("person_id", personId); put("media_id", m); put("grp", if (group) 1 else 0)
+                }, SQLiteDatabase.CONFLICT_REPLACE)
+        }
+    }
 
     /** Uses this person's face in [mediaId] as their picture (a real face over a hand-added one). */
     fun setCover(personId: Long, mediaId: Long): Boolean {

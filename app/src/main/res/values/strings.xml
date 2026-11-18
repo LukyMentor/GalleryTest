@@ -70,6 +70,8 @@
     <string name="rename">Rename</string>
     <string name="show_in_photos">Show in Photos</string>
     <string name="add_to_person">Add to person</string>
+    <string name="mark_group_photo">Group photo</string>
+    <string name="mark_just_them">Just them</string>
     <string name="move_to_person">Move to person</string>
     <string name="not_this_person">Not this person</string>
     <string name="crop">Edit</string>

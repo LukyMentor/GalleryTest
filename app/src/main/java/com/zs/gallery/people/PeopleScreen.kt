@@ -50,6 +50,8 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.PersonOff
 import androidx.compose.material.icons.outlined.PersonRemove
 import androidx.compose.material.icons.outlined.SwitchAccount
@@ -119,6 +121,13 @@ object RoutePerson : Route {
 
 private val MOVE_TO_PERSON = Action(R.string.move_to_person, Icons.Outlined.SwitchAccount)
 private val NOT_THIS_PERSON = Action(R.string.not_this_person, Icons.Outlined.PersonRemove)
+private val MARK_GROUP = Action(R.string.mark_group_photo, Icons.Outlined.Groups)
+private val MARK_SINGLE = Action(R.string.mark_just_them, Icons.Outlined.Person)
+
+/** Person screen filter: everything, just them, or group photos. */
+private const val SHOW_ALL = 0
+private const val SHOW_SINGLE = 1
+private const val SHOW_GROUP = 2
 
 private fun imageUri(id: Long) = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
 
@@ -436,11 +445,27 @@ fun PersonScreen(id: Long) {
         value = withContext(Dispatchers.IO) { byDay(context, store.photosOf(id)) }
         LastLists.photos[id] = value
     }
-    val photos = remember(sections) { sections.values.flatten().map { it.id } }
+    // Group photos (several people who matter, and they aren't the main face).
+    val groupIds by produceState(LastLists.groups[id] ?: emptySet(), version) {
+        value = withContext(Dispatchers.IO) { store.groupPhotosOf(id) }
+        LastLists.groups[id] = value
+    }
+    val prefs = remember { context.getSharedPreferences("faces", Context.MODE_PRIVATE) }
+    var show by rememberSaveable { mutableStateOf(prefs.getInt("person_filter", SHOW_ALL)) }
+    val shown = remember(sections, groupIds, show) {
+        if (show == SHOW_ALL) sections
+        else sections.mapValues { (_, list) ->
+            list.filter { (it.id in groupIds) == (show == SHOW_GROUP) }
+        }.filterValues { it.isNotEmpty() }
+    }
+    val allCount = remember(sections) { sections.values.sumOf { it.size } }
+    val groupCount = remember(sections, groupIds) { sections.values.sumOf { l -> l.count { it.id in groupIds } } }
+    val photos = remember(shown) { shown.values.flatten().map { it.id } }
     val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     // Section layout for the fast scroller (1 leading item: the header).
-    val index = remember(sections) {
-        sections.takeIf { it.isNotEmpty() }?.let { com.zs.gallery.files.TimelineIndex(it, true, 1) }
+    // (2 leading items: header + filter chips.)
+    val index = remember(shown) {
+        shown.takeIf { it.isNotEmpty() }?.let { com.zs.gallery.files.TimelineIndex(it, true, 2) }
     }
     val density = androidx.compose.ui.platform.LocalDensity.current
     val gridColumns by remember(density) {
@@ -538,7 +563,21 @@ fun PersonScreen(id: Long) {
                     }
                 }
             }
-            for ((label, files) in sections) {
+            // All · Just them · Group photos
+            item(span = { GridItemSpan(maxLineSpan) }, key = "filters") {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .horizontalScroll(androidx.compose.foundation.rememberScrollState())
+                        .padding(horizontal = 12.dp, vertical = 2.dp)
+                ) {
+                    fun pick(v: Int) { show = v; prefs.edit().putInt("person_filter", v).apply(); selected.clear() }
+                    com.zs.gallery.files.FilterChip("All  $allCount", show == SHOW_ALL) { pick(SHOW_ALL) }
+                    com.zs.gallery.files.FilterChip("Just them  ${allCount - groupCount}", show == SHOW_SINGLE) { pick(SHOW_SINGLE) }
+                    com.zs.gallery.files.FilterChip("Group photos  $groupCount", show == SHOW_GROUP) { pick(SHOW_GROUP) }
+                }
+            }
+            for ((label, files) in shown) {
             // Day header (compact) + that day's photos + a small gap.
             item(span = { GridItemSpan(maxLineSpan) }, key = "h_$label", contentType = "header") {
                 com.zs.compose.theme.text.TonalHeader(
@@ -628,10 +667,18 @@ fun PersonScreen(id: Long) {
         }
         ViewerActions(
             visible = selected.isNotEmpty(),
-            actions = listOf(MOVE_TO_PERSON, NOT_THIS_PERSON),
+            actions = when (show) {
+                SHOW_SINGLE -> listOf(MOVE_TO_PERSON, NOT_THIS_PERSON, MARK_GROUP)
+                SHOW_GROUP -> listOf(MOVE_TO_PERSON, NOT_THIS_PERSON, MARK_SINGLE)
+                else -> listOf(MOVE_TO_PERSON, NOT_THIS_PERSON, MARK_SINGLE, MARK_GROUP)
+            },
             onAction = { action ->
                 if (action == MOVE_TO_PERSON) picker = "move"
-                else {
+                else if (action == MARK_GROUP || action == MARK_SINGLE) {
+                    val ids = selected.toList()
+                    selected.clear()
+                    edit { store.setGroup(id, ids, group = action == MARK_GROUP) }
+                } else {
                     val ids = selected.toList()
                     selected.clear()
                     edit { store.moveFaces(id, ids, -1L) }
@@ -677,6 +724,7 @@ private const val NEW_PERSON = -2L
 private object LastLists {
     var people: List<Person> = emptyList()
     val photos = HashMap<Long, com.zs.gallery.common.Mapped<com.zs.core.store.MediaFile>>()
+    val groups = HashMap<Long, Set<Long>>()
 }
 
 /** A sheet with everyone's face to choose from (plus "New person" when moving photos). */
