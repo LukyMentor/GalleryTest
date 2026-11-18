@@ -252,7 +252,10 @@ class DetailsSheetState(private val scope: CoroutineScope, private val density: 
     val reveal = mutableFloatStateOf(0f)
     /** Heading for fully open (opened, or let go to open): follows height changes. */
     private var openTarget = false
-    val isOpen: Boolean get() = reveal.floatValue > 0f
+    val isOpen: Boolean get() = reveal.floatValue > 1f
+
+    /** Visibly out: opened (or opening), or at least a quarter pulled up. */
+    val isShowing: Boolean get() = openTarget || reveal.floatValue > height * 0.25f
     private var job: Job? = null
 
     /** Finger moved by [dy] px (negative = up = pull the sheet further out). */

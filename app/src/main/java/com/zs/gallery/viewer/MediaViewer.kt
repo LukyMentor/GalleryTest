@@ -345,16 +345,9 @@ private fun Carousel(
     }
 
     // Handle BackPress
-    BackHandler {
-        val zoom = focusedZoom
-        when {
-            // reset zoom - only if really zoomed in: pulling the properties sheet up could
-            // leave a tiny zoom/pan that made the first back gesture "do nothing".
-            zoom != null && (zoom.zoomFraction ?: 0f) > 0.02f -> scope.launch { zoom.resetZoom() }
-            // else ask parent to handle back-press
-            else -> onRequest(EVENT_BACK_PRESS)
-        }
-    }
+    // Back always goes to the screen (closes the properties sheet if it's showing, else the
+    // photo) - one gesture, never a hidden extra step like resetting the zoom.
+    BackHandler { onRequest(EVENT_BACK_PRESS) }
     val navController = LocalNavController.current
     val ctx = LocalContext.current
     HorizontalPager(
@@ -562,7 +555,9 @@ fun MediaViewer(viewState: MediaViewerViewState) {
             }
             // Handle back press events, prioritizing focused states (immersive, details)
             // before navigating up.
-            EVENT_BACK_PRESS if sheet.isOpen -> sheet.close()
+            // Only if the sheet is actually showing; a sheet that's (almost) closed must not eat
+            // the back gesture - that needed a second swipe to close the photo.
+            EVENT_BACK_PRESS if sheet.isShowing -> sheet.close()
             // Back closes the viewer straight away, also from immersive (UI hidden) mode;
             // the original system-bar style is restored when the screen is disposed.
             EVENT_BACK_PRESS -> if (!closing) dismissOffset.closeNow()
