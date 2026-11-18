@@ -364,7 +364,7 @@ private fun PersonTile(person: Person, onClick: () -> Unit) {
             modifier = Modifier.padding(top = 6.dp)
         )
         Label(
-            if (person.photos == 1) "1 photo" else "${person.photos} photos",
+            countLabel(person.images, person.videos),
             style = AppTheme.typography.label3,
             color = colors.onBackground.copy(alpha = 0.6f)
         )
@@ -521,7 +521,10 @@ fun PersonScreen(id: Long) {
                                 }
                             )
                             Label(
-                                if (photos.size == 1) "1 photo" else "${photos.size} photos" +
+                                countLabel(
+                                    sections.values.sumOf { list -> list.count { it.isImage } },
+                                    sections.values.sumOf { list -> list.count { !it.isImage } }
+                                ) +
                                         if (person?.hidden == true) " · hidden" else "",
                                 style = AppTheme.typography.body2,
                                 color = colors.onBackground.copy(alpha = 0.65f)

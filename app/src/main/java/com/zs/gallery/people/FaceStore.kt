@@ -24,11 +24,23 @@ class Person(
     val id: Long,
     val name: String?,
     val hidden: Boolean,
-    /** Photos this person is in. */
+    /** Photos + videos this person is in. */
     val photos: Int,
     /** The face used as the person's picture. */
     val cover: FaceRow?,
-)
+    /** Of [photos], how many are videos. */
+    val videos: Int = 0,
+) {
+    val images: Int get() = photos - videos
+}
+
+/** "12 photos · 3 videos" (parts that are 0 left out). */
+fun countLabel(images: Int, videos: Int): String {
+    val parts = ArrayList<String>()
+    if (images > 0 || videos == 0) parts += if (images == 1) "1 photo" else "$images photos"
+    if (videos > 0) parts += if (videos == 1) "1 video" else "$videos videos"
+    return parts.joinToString(" · ")
+}
 
 /**
  * Local database of faces and people (app-private; nothing leaves the phone).
@@ -272,6 +284,7 @@ internal class FaceStore(context: Context) :
         }
         val picked = HashMap<Long, FaceRow>()
         val photos = HashMap<Long, HashSet<Long>>()
+        val videos = HashMap<Long, HashSet<Long>>()
         val cover = HashMap<Long, FaceRow>()
         readableDatabase.rawQuery(
             "SELECT id, media_id, x1, y1, x2, y2, score, person_id, kind FROM faces WHERE person_id > 0", null
@@ -279,6 +292,7 @@ internal class FaceStore(context: Context) :
             while (c.moveToNext()) {
                 val row = row(c)
                 photos.getOrPut(row.personId) { HashSet() } += row.mediaId
+                if (row.isVideo) videos.getOrPut(row.personId) { HashSet() } += row.mediaId
                 if (chosen[row.id] == row.personId) picked[row.personId] = row
                 // Picture: the biggest, clearest face.
                 val best = cover[row.personId]
@@ -287,7 +301,7 @@ internal class FaceStore(context: Context) :
         }
         return names.mapNotNull { (id, info) ->
             val n = photos[id]?.size ?: return@mapNotNull null
-            Person(id, info.first, info.second, n, picked[id] ?: cover[id])
+            Person(id, info.first, info.second, n, picked[id] ?: cover[id], videos[id]?.size ?: 0)
         }.sortedWith(compareByDescending<Person> { it.name != null }.thenByDescending { it.photos })
     }
 
