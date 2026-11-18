@@ -614,7 +614,9 @@ private fun PersonPicker(
     val people by produceState(emptyList<Person>(), version, visible) {
         if (visible) value = withContext(Dispatchers.IO) { FaceIndexer.store(context).people() }
     }
-    BackHandler(enabled = visible, onBack = onDismiss)
+    // Re-registered each time the sheet opens, so it's the newest back handler and the back
+    // gesture closes the sheet first (not the photo / screen underneath).
+    androidx.compose.runtime.key(visible) { BackHandler(enabled = visible, onBack = onDismiss) }
     Box(Modifier.fillMaxSize()) {
         AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut()) {
             Box(

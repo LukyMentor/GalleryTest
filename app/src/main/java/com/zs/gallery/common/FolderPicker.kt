@@ -111,7 +111,9 @@ fun FolderPickerHost() {
     var shown by remember { mutableStateOf<FolderPicker.Request?>(null) }
     if (current != null) shown = current
     val visible = current != null
-    BackHandler(enabled = visible) { FolderPicker.answer(null) }
+    // Re-registered each time the sheet opens, so it's the newest back handler and the back
+    // gesture closes the sheet first (not the photo / screen underneath).
+    androidx.compose.runtime.key(visible) { BackHandler(enabled = visible) { FolderPicker.answer(null) } }
     Box(Modifier.fillMaxSize()) {
         AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut()) {
             Box(

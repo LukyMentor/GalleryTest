@@ -84,7 +84,9 @@ fun AddToPersonHost() {
     var shown by remember { mutableStateOf<Long?>(null) }
     if (current != null) shown = current
     val visible = current != null
-    BackHandler(enabled = visible) { AddToPerson.close() }
+    // Re-registered each time the sheet opens, so it's the newest back handler and the back
+    // gesture closes the sheet first (not the photo / screen underneath).
+    key(visible) { BackHandler(enabled = visible) { AddToPerson.close() } }
     Box(Modifier.fillMaxSize()) {
         AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut()) {
             Box(
