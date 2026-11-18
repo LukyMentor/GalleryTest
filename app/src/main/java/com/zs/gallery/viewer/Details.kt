@@ -249,12 +249,15 @@ private fun DetailRow(icon: ImageVector, label: String, value: String) {
 class DetailsSheetState(private val scope: CoroutineScope, private val density: Float) {
     var height by mutableIntStateOf(0)
     val reveal = mutableFloatStateOf(0f)
+    /** Heading for fully open (opened, or let go to open): follows height changes. */
+    private var openTarget = false
     val isOpen: Boolean get() = reveal.floatValue > 0f
     private var job: Job? = null
 
     /** Finger moved by [dy] px (negative = up = pull the sheet further out). */
     fun dragBy(dy: Float) {
         job?.cancel()
+        openTarget = false
         reveal.floatValue = (reveal.floatValue - dy).coerceIn(0f, height.toFloat())
     }
 
@@ -266,6 +269,7 @@ class DetailsSheetState(private val scope: CoroutineScope, private val density: 
             velocityY > fling -> false
             else -> reveal.floatValue > height * 0.35f
         }
+        openTarget = open
         animateTo(if (open) height.toFloat() else 0f)
     }
 
@@ -277,15 +281,23 @@ class DetailsSheetState(private val scope: CoroutineScope, private val density: 
         val old = height
         height = newHeight
         if (old <= 0 || newHeight == old) return
-        val open = reveal.floatValue >= old - 1f
+        // Open (or on its way to open, e.g. content changed during the opening animation).
+        val open = openTarget || reveal.floatValue >= old - 1f
         when {
             open -> animateTo(newHeight.toFloat())
             reveal.floatValue > newHeight -> reveal.floatValue = newHeight.toFloat()
         }
     }
 
-    fun open() = animateTo(height.toFloat())
-    fun close() = animateTo(0f)
+    fun open() {
+        openTarget = true
+        animateTo(height.toFloat())
+    }
+
+    fun close() {
+        openTarget = false
+        animateTo(0f)
+    }
 
     private fun animateTo(target: Float) {
         job?.cancel()
@@ -326,7 +338,8 @@ fun DetailsSheet(
             .onSizeChanged { state.onHeightChanged(it.height) }
             .graphicsLayer {
                 // Hidden below the screen edge until pulled up.
-                translationY = size.height - state.reveal.floatValue
+                // Never more than its own height: it can't float above the bottom edge.
+                translationY = size.height - state.reveal.floatValue.coerceAtMost(size.height)
             }
             .shadow(16.dp, shape)
             .background(colors.background(2.dp), shape)

@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -66,12 +67,21 @@ object AddToPerson {
     var mediaId by mutableStateOf<Long?>(null)
         private set
 
+    /** Several photos (from a selection): pick one or more people, then "Add". */
+    var batch by mutableStateOf<LongArray?>(null)
+        private set
+
     fun open(id: Long) {
         mediaId = id
     }
 
+    fun openMany(ids: LongArray) {
+        if (ids.size == 1) open(ids[0]) else batch = ids
+    }
+
     fun close() {
         mediaId = null
+        batch = null
     }
 }
 
@@ -81,9 +91,12 @@ private const val NEW_PERSON = -2L
 @Composable
 fun AddToPersonHost() {
     val current = AddToPerson.mediaId
+    val batch = AddToPerson.batch
     var shown by remember { mutableStateOf<Long?>(null) }
-    if (current != null) shown = current
-    val visible = current != null
+    var shownBatch by remember { mutableStateOf<LongArray?>(null) }
+    if (current != null) { shown = current; shownBatch = null }
+    if (batch != null) { shownBatch = batch; shown = null }
+    val visible = current != null || batch != null
     // Re-registered each time the sheet opens, so it's the newest back handler and the back
     // gesture closes the sheet first (not the photo / screen underneath).
     key(visible) { BackHandler(enabled = visible) { AddToPerson.close() } }
@@ -102,8 +115,12 @@ fun AddToPersonHost() {
             exit = slideOutVertically { it } + fadeOut(),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
-            val media = shown ?: return@AnimatedVisibility
-            key(media) { Sheet(media) }
+            val many = shownBatch
+            if (many != null) key(many) { BatchSheet(many) }
+            else {
+                val media = shown ?: return@AnimatedVisibility
+                key(media) { Sheet(media) }
+            }
         }
     }
 }
@@ -249,6 +266,115 @@ private fun Sheet(mediaId: Long) {
                     modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { pick(p.id) }.padding(6.dp)
                 ) {
                     FaceAvatar(p.cover, 68.dp)
+                    Label(
+                        p.name ?: "${p.photos} photos", style = AppTheme.typography.body2,
+                        color = if (p.name != null) colors.onBackground else colors.onBackground.copy(alpha = 0.6f),
+                        maxLines = 1, modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+
+/** Several photos to one or more people (multi-select, then "Add"). */
+@Composable
+private fun BatchSheet(ids: LongArray) {
+    val context = LocalContext.current
+    val colors = AppTheme.colors
+    val scope = rememberCoroutineScope()
+    val store = remember { FaceIndexer.store(context) }
+    val people by produceState(emptyList<Person>()) {
+        value = withContext(Dispatchers.IO) { store.people() }
+    }
+    val chosen = remember { androidx.compose.runtime.mutableStateListOf<Long>() }
+    fun toggle(id: Long) { if (id in chosen) chosen.remove(id) else chosen.add(id) }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .fillMaxHeight(0.78f)
+            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+            .background(colors.background(3.dp))
+            .clickable(remember { MutableInteractionSource() }, indication = null, onClick = {})
+            .windowInsetsPadding(WindowInsets.navigationBars)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 16.dp)) {
+            Column(Modifier.weight(1f)) {
+                Label("Add ${ids.size} photos to…", style = AppTheme.typography.title2, fontWeight = FontWeight.SemiBold,
+                    color = colors.onBackground)
+                Label("Pick one or more people", style = AppTheme.typography.body2,
+                    color = colors.onBackground.copy(alpha = 0.65f))
+            }
+            // Add
+            val enabled = chosen.isNotEmpty()
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(if (enabled) colors.accent else colors.onBackground.copy(alpha = 0.1f))
+                    .clickable(enabled = enabled) {
+                        val targets = chosen.toList()
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                val resolved = targets.map { if (it == NEW_PERSON) store.newPerson() else it }
+                                store.addPhotos(ids.toList(), resolved)
+                            }
+                            FaceIndexer.changed()
+                            AddToPerson.close()
+                            Toast.makeText(context, "Added", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    .padding(horizontal = 20.dp, vertical = 10.dp)
+            ) {
+                Label("Add", color = if (enabled) colors.onAccent else colors.onBackground.copy(alpha = 0.4f),
+                    fontWeight = FontWeight.SemiBold)
+            }
+        }
+        val choices = people.filter { !it.hidden }
+            .sortedWith(compareByDescending<Person> { it.name != null }.thenByDescending { it.photos })
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(96.dp),
+            contentPadding = PaddingValues(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            item(key = "new") {
+                val on = NEW_PERSON in chosen
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { toggle(NEW_PERSON) }.padding(6.dp)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(68.dp)
+                            .border(if (on) 3.dp else 0.dp, if (on) colors.onBackground else Color.Transparent, CircleShape)
+                            .background(colors.accent, CircleShape)
+                    ) { Icon(Icons.Outlined.PersonAdd, null, tint = colors.onAccent) }
+                    Label("New person", style = AppTheme.typography.body2, color = colors.accent,
+                        modifier = Modifier.padding(top = 6.dp))
+                }
+            }
+            items(choices, key = { it.id }) { p ->
+                val on = p.id in chosen
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { toggle(p.id) }.padding(6.dp)
+                ) {
+                    Box {
+                        FaceAvatar(
+                            p.cover, 68.dp,
+                            Modifier.border(if (on) 3.dp else 0.dp, if (on) colors.accent else Color.Transparent, CircleShape)
+                        )
+                        if (on)
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.align(Alignment.BottomEnd).size(22.dp).background(colors.accent, CircleShape)
+                            ) {
+                                Icon(androidx.compose.material.icons.Icons.Filled.Check, null, tint = colors.onAccent,
+                                    modifier = Modifier.size(14.dp))
+                            }
+                    }
                     Label(
                         p.name ?: "${p.photos} photos", style = AppTheme.typography.body2,
                         color = if (p.name != null) colors.onBackground else colors.onBackground.copy(alpha = 0.6f),

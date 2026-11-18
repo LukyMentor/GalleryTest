@@ -59,6 +59,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import com.zs.core.store.sortedForTimeline
 import com.zs.gallery.files.MediaFilter
+import androidx.compose.material.icons.outlined.PersonAdd
 import kotlinx.coroutines.launch
 import com.zs.gallery.files.RouteFiles.SOURCE_PICK
 import com.zs.gallery.files.MediaOrder
@@ -108,6 +109,7 @@ private val MOVE = Action(R.string.move_to, Icons.Outlined.DriveFileMove)
 private val COPY = Action(R.string.copy_to, Icons.Outlined.ContentCopy)
 private val RENAME = Action(R.string.rename, Icons.Outlined.DriveFileRenameOutline)
 private val MOVE_HERE = Action(R.string.move_here, Icons.Outlined.DriveFileMove)
+private val ADD_TO_PERSON = Action(R.string.add_to_person, Icons.Outlined.PersonAdd)
 private val COPY_HERE = Action(R.string.copy_here, Icons.Outlined.ContentCopy)
 
 @SuppressLint("NewApi")
@@ -323,6 +325,7 @@ class FilesViewModel(
                 this += QUICK_SHARE
                 this += MOVE; this += COPY
                 if (selection.size == 1) this += RENAME
+                this += ADD_TO_PERSON
                 if (selectAll) this += SELECT_ALL
             }
         }
@@ -388,6 +391,13 @@ class FilesViewModel(
                     // Back to Folders, where the new folder now shows up.
                     if (done > 0) (resolver as? androidx.activity.ComponentActivity)
                         ?.onBackPressedDispatcher?.onBackPressed()
+                }
+                ADD_TO_PERSON -> {
+                    val wanted = focused.toHashSet()
+                    val images = data?.values?.flatten()?.filter { it.id in wanted && it.isImage }.orEmpty()
+                    if (images.isEmpty()) return@launch
+                    com.zs.gallery.people.AddToPerson.openMany(images.map { it.id }.toLongArray())
+                    clear()
                 }
                 MOVE, COPY, RENAME -> {
                     val wanted = focused.toHashSet()

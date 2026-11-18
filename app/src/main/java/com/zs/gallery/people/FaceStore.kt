@@ -262,6 +262,27 @@ internal class FaceStore(context: Context) :
         dropEmptyPersons()
     }
 
+    /**
+     * Adds photos to people in one go. A photo with exactly one face, added to one person, gets
+     * that face; otherwise the whole photo is added. Photos already with that person are skipped.
+     */
+    fun addPhotos(mediaIds: Collection<Long>, personIds: Collection<Long>) {
+        inTransaction {
+            for (m in mediaIds) {
+                val faces = facesIn(m)
+                for (p in personIds) {
+                    if (faces.any { it.first.personId == p }) continue
+                    val only = faces.singleOrNull()
+                    if (only != null && personIds.size == 1)
+                        writableDatabase.update("faces", ContentValues().apply { put("person_id", p); put("locked", 1) },
+                            "id = ?", arrayOf("${only.first.id}"))
+                    else addManual(m, p)
+                }
+            }
+        }
+        dropEmptyPersons()
+    }
+
     /** The user says [personId] is in this photo, but no face was detected there. */
     fun addManual(mediaId: Long, personId: Long) {
         writableDatabase.insert("faces", null, ContentValues().apply {
