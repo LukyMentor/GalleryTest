@@ -27,6 +27,9 @@ private val config: Config.() -> Unit = {
     targetSdk = 37                                      // Target SDK
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     vectorDrawables { useSupportLibrary = true }
+    // Only 64-bit ARM (all recent phones): keeps the face-recognition runtime from adding
+    // libraries for four CPU types to the APK.
+    ndk { abiFilters += listOf("arm64-v8a") }
 }
 
 // -----------------------------------------------------------------------------
@@ -177,7 +180,9 @@ dependencies {
     // Compose extensions
     implementation(libs.telephoto.zoomable)
     implementation(libs.telephoto.zoomable.image.coil3)
-    implementation(libs.androidx.exifinterface) // sharp (sub-sampled) zoom
+    implementation(libs.androidx.exifinterface)
+    // People (experimental): on-device face detection + recognition, no internet.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0") // sharp (sub-sampled) zoom
     implementation(libs.accompanist.permissions)
     implementation(libs.androidx.koin)
     implementation(libs.chrisbanes.haze)

@@ -142,6 +142,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.zs.gallery.map.RouteMap
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Face
 import com.zs.gallery.common.compose.preference
 import com.zs.gallery.common.compose.rememberAcrylicSurface
 import com.zs.gallery.common.compose.shine
@@ -204,6 +205,7 @@ private val NavController.primary: State<String?>
                 val isPrimary = when (dest.domain) {
                     RouteFiles.domain -> true
                     RouteFolders.domain -> true
+                    com.zs.gallery.people.RoutePeople.domain -> true
                     RouteMap.domain -> true
                   //  RouteSettings.domain -> true
                     else -> false
@@ -246,7 +248,8 @@ private val NavBackStackEntry.tabIndex: Int
         val index = when (destination.domain) {
             RouteFiles.domain -> 0
             RouteFolders.domain -> 1
-            RouteMap.domain -> 2
+            com.zs.gallery.people.RoutePeople.domain -> 2
+            RouteMap.domain -> 3
             else -> return -1
         }
         val args = arguments
@@ -405,6 +408,13 @@ private val navGraphBuilder: NavGraphBuilder.() -> Unit = {
 
     // Map
     composable(RouteMap) { MapScreen() }
+    // People (experimental face grouping)
+    composable(com.zs.gallery.people.RoutePeople) { com.zs.gallery.people.PeopleScreen() }
+    composable(com.zs.gallery.people.RoutePerson) {
+        com.zs.gallery.people.PersonScreen(
+            it.arguments?.getString(com.zs.gallery.people.RoutePerson.PARAM_ID)?.toLongOrNull() ?: -1L
+        )
+    }
 
     // Settings
     composable(RouteSettings) {
@@ -507,6 +517,15 @@ private fun NavigationBar(
             colors = navColors
         )
 
+        // People (experimental): faces found in the photos.
+        AnimatedNavItem(
+            label = "People",
+            icon = Icons.Filled.Face,
+            selected = primary == com.zs.gallery.people.RoutePeople.domain,
+            onClick = { navController.toRoute(com.zs.gallery.people.RoutePeople) },
+            colors = navColors
+        )
+
         // Map: where photos were taken.
         AnimatedNavItem(
             label = "Map",
@@ -588,6 +607,8 @@ fun Home(
 
     // properties
     val style = (activity as SystemFacade).style
+    // Face scan (experimental): carries on in the background while the app is running.
+    LaunchedEffect(Unit) { com.zs.gallery.people.FaceIndexer.start(activity) }
     // Picture of the grid each time a photo opens from it (the viewer draws it behind the photo).
     DisposableEffect(navController) {
         var previous: String? = null

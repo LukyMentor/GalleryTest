@@ -23,3 +23,7 @@
 -keepnames class * implements com.zs.gallery.common.Route
 -keepnames class * implements com.zs.gallery.common.SafeArgs
 -dontwarn com.google.android.gms.common.annotation.NoNullnessRewrite
+
+# ONNX Runtime (People / face recognition) is called from native code.
+-keep class ai.onnxruntime.** { *; }
+-dontwarn ai.onnxruntime.**
