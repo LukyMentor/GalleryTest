@@ -28,7 +28,22 @@ internal class WorldData(
     val lakes: Shape,
     val cities: List<City>,
     val countryLabels: List<CountryLabel>,
+    /** Rivers and roads, bundled into groups (same kind, zoom and area) drawn as one path each. */
+    val lines: List<LineGroup> = emptyList(),
 ) {
+    /**
+     * Lines of one [kind] (0 motorway, 1 main road, 2 other road, 3 river) that appear from
+     * [minZoom], in one patch of the world.
+     */
+    class LineGroup(
+        val kind: Int, val minZoom: Int,
+        val minX: Float, val minY: Float, val maxX: Float, val maxY: Float,
+        val path: Path,
+    ) {
+        fun intersects(left: Float, top: Float, right: Float, bottom: Float) =
+            maxX >= left && minX <= right && maxY >= top && minY <= bottom
+    }
+
     /** A closed polygon ring with its bounding box. */
     class Ring(
         val minX: Float, val minY: Float, val maxX: Float, val maxY: Float,
@@ -91,7 +106,8 @@ internal class WorldData(
         private fun parse(bytes: ByteArray): WorldData {
             val b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
             val magic = ByteArray(4).also { b.get(it) }
-            check(String(magic) == "MGW4") { "Unknown world map format" }
+            val format = String(magic)
+            check(format == "MGW4" || format == "MGW5") { "Unknown world map format" }
 
             fun rings(): List<Ring> {
                 val count = b.int
@@ -131,7 +147,35 @@ internal class WorldData(
                 val name = ByteArray(len).also { b.get(it) }
                 CountryLabel(x, y, minZoom, maxZoom, String(name, Charsets.UTF_8))
             }
-            return WorldData(countries, lakes, cities, labels)
+            // MGW5: rivers + roads, grouped by kind, zoom and a 32 x 32 grid of the world.
+            val lines = ArrayList<LineGroup>()
+            if (format == "MGW5") {
+                class Acc(val kind: Int, val zoom: Int) {
+                    val path = Path()
+                    var minX = 1f; var minY = 1f; var maxX = 0f; var maxY = 0f
+                }
+                val groups = HashMap<Long, Acc>()
+                repeat(b.int) {
+                    val minX = b.float; val minY = b.float; val maxX = b.float; val maxY = b.float
+                    val zoom = b.get().toInt() and 0xFF
+                    val kind = b.get().toInt() and 0xFF
+                    val n = b.int
+                    val gx = (((minX + maxX) / 2f) * 32).toInt().coerceIn(0, 31)
+                    val gy = (((minY + maxY) / 2f) * 32).toInt().coerceIn(0, 31)
+                    val key = (kind.toLong() shl 40) or (zoom.toLong() shl 20) or (gx.toLong() shl 8) or gy.toLong()
+                    val acc = groups.getOrPut(key) { Acc(kind, zoom) }
+                    for (i in 0 until n) {
+                        val x = b.float; val y = b.float
+                        if (i == 0) acc.path.moveTo(x, y) else acc.path.lineTo(x, y)
+                    }
+                    acc.minX = minOf(acc.minX, minX); acc.minY = minOf(acc.minY, minY)
+                    acc.maxX = maxOf(acc.maxX, maxX); acc.maxY = maxOf(acc.maxY, maxY)
+                }
+                // Rivers first, then roads from minor to major (major on top).
+                groups.values.sortedWith(compareBy<Acc> { if (it.kind == 3) 0 else 1 }.thenByDescending { it.kind })
+                    .mapTo(lines) { LineGroup(it.kind, it.zoom, it.minX, it.minY, it.maxX, it.maxY, it.path) }
+            }
+            return WorldData(countries, lakes, cities, labels, lines)
         }
     }
 }

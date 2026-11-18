@@ -79,12 +79,16 @@ def write_rings(f, rings):
             f.write(struct.pack('<2f', x, y))
 
 countries = json.load(open(f'{SRC}/ne_10m_admin_0_countries.geojson'))['features']
-lakes = json.load(open(f'{SRC}/ne_50m_lakes.geojson'))['features']
+lakes = json.load(open(f'{SRC}/ne_10m_lakes.geojson'))['features'] + \
+    json.load(open(f'{SRC}/ne_10m_lakes_europe.geojson'))['features']
+rivers = json.load(open(f'{SRC}/ne_10m_rivers_lake_centerlines.geojson'))['features'] + \
+    json.load(open(f'{SRC}/ne_10m_rivers_europe.geojson'))['features']
+roads = json.load(open(f'{SRC}/ne_10m_roads.geojson'))['features']
 places = json.load(open(f'{SRC}/ne_10m_populated_places_simple.geojson'))['features']
 
 stats = [0, 0, 0]
 with open(OUT, 'wb') as f:
-    f.write(b'MGW4')
+    f.write(b'MGW5')
     f.write(struct.pack('<I', len(countries)))
     for c in countries:
         rings = list(rings_of(c['geometry']))
@@ -103,7 +107,7 @@ with open(OUT, 'wb') as f:
     for p in places:
         pr = p['properties']
         mz = pr.get('min_zoom') or 10
-        if mz > 9:
+        if mz > 10:
             continue
         x, y = merc(pr['longitude'], pr['latitude'])
         name = (pr.get('name') or '').encode('utf-8')
@@ -128,4 +132,38 @@ with open(OUT, 'wb') as f:
     for mn, x, y, mx, name in labels:
         f.write(struct.pack('<2f2BH', x, y, int(math.floor(mn)), int(math.ceil(mx)), len(name)))
         f.write(name)
+    # Lines: rivers (kind 3) and roads (0 motorway, 1 main, 2 other), with the zoom they appear at.
+    def lines_of(geom):
+        parts = geom['coordinates'] if geom['type'] == 'MultiLineString' else [geom['coordinates']]
+        for part in parts:
+            yield [merc(lon, lat) for lon, lat in part]
+    out_lines = []
+    for r in rivers:
+        pr = r['properties']
+        if r['geometry'] is None: continue
+        mz = pr.get('min_zoom') or 6
+        for line in lines_of(r['geometry']):
+            sl = dp(line, 0.000006)
+            if len(sl) >= 2: out_lines.append((mz, 3, sl))
+    road_kind = {'Major Highway': 0, 'Beltway': 0, 'Secondary Highway': 1, 'Road': 2, 'Unknown': 2, 'Bypass': 1}
+    for r in roads:
+        pr = r['properties']
+        if r['geometry'] is None: continue
+        k = road_kind.get(pr.get('type'))
+        if k is None: continue
+        if pr.get('expressway') == 1: k = 0
+        mz = pr.get('min_zoom') or 7
+        for line in lines_of(r['geometry']):
+            sl = dp(line, 0.000005)
+            if len(sl) >= 2: out_lines.append((mz, k, sl))
+    out_lines.sort(key=lambda t: (0 if t[1] == 3 else 1, -t[1]))  # rivers first, then minor -> major roads on top
+    f.write(struct.pack('<I', len(out_lines)))
+    pts = 0
+    for mz, k, sl in out_lines:
+        xs = [p[0] for p in sl]; ys = [p[1] for p in sl]
+        f.write(struct.pack('<4f2BI', min(xs), min(ys), max(xs), max(ys), int(math.floor(mz)), k, len(sl)))
+        for x, y in sl:
+            f.write(struct.pack('<2f', x, y))
+        pts += len(sl)
+    print('lines', len(out_lines), 'points', pts)
 print('points coarse/mid/fine', stats, 'lakes', len(lake_rings), 'cities', len(cities))

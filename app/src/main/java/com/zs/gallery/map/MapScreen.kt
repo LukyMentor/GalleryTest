@@ -10,6 +10,7 @@
 
 package com.zs.gallery.map
 
+import androidx.compose.foundation.layout.navigationBars
 import android.Manifest
 import android.content.ContentUris
 import android.provider.MediaStore
@@ -120,6 +121,7 @@ fun MapScreen() {
 
     Box(Modifier.fillMaxSize()) {
         // Offline map bundled in the app: no internet, no API key.
+        val viewBounds = remember { FloatArray(4) }
         // Coming from a photo's "Location": fly there, mark the spot, show that place's photos.
         val jump = MapJump.target
         val focus = remember(jump) {
@@ -139,6 +141,7 @@ fun MapScreen() {
             accent = colors.accent,
             onClusterTap = { cluster -> selectedIds = cluster.photos.map { it.id }.toLongArray() },
             modifier = Modifier.fillMaxSize(),
+            boundsOut = viewBounds,
             focus = focus,
             highlight = spot,
             onFocused = {
@@ -217,6 +220,34 @@ fun MapScreen() {
                     facade.style += com.zs.gallery.common.WindowStyle.FLAG_APP_NAV_BAR_VISIBILITY_AUTO
             }
         }
+        // "Photos in this area": everything visible on the map now, in the full grid.
+        if (cluster == null && photos.isNotEmpty())
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.content.union(WindowInsets.navigationBars).only(WindowInsetsSides.Bottom))
+                    .padding(bottom = 16.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(if (dark) Color(0xCC1E4A3A) else Color(0xEEFFFFFF))
+                    .clickable {
+                        val (l, t, r, b) = viewBounds.toList()
+                        val inView = photos.filter {
+                            val (x, y) = mercator(it.latitude, it.longitude)
+                            x in l..r && y in t..b
+                        }.sortedByDescending { it.id }
+                        if (inView.isNotEmpty()) {
+                            selectedIds = inView.map { it.id }.toLongArray()
+                            expanded = true
+                        }
+                    }
+                    .padding(horizontal = 26.dp, vertical = 13.dp)
+            ) {
+                Label(
+                    "Photos in this area",
+                    color = if (dark) Color.White else Color(0xFF1B1B21),
+                    fontWeight = FontWeight.Medium
+                )
+            }
         if (cluster != null)
             PlaceStrip(
                 cluster = cluster,

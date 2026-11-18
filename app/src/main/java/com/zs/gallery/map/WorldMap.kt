@@ -102,16 +102,25 @@ private class MapColors(
     val coast: Color,
     val city: Color,
     val cityHalo: Color,
+    val river: Color,
+    val motorway: Color,
+    val mainRoad: Color,
+    val road: Color,
 )
 
+// iPhone-Maps-like: soft green land, blue water, pinkish borders, white / yellow roads.
 private val LightMap = MapColors(
-    water = Color(0xFFC4D7E8), land = Color(0xFFF5F2EB), border = Color(0xFFA89E92),
-    coast = Color(0xFFAFC3D6), city = Color(0xFF3E3E48), cityHalo = Color(0xE6F5F2EB),
+    water = Color(0xFF9CC6F2), land = Color(0xFFE4EEDB), border = Color(0xFFC285A8),
+    coast = Color(0xFF8DB8E8), city = Color(0xFF34343C), cityHalo = Color(0xE6E4EEDB),
+    river = Color(0xFF9CC6F2), motorway = Color(0xFFF4C75C), mainRoad = Color(0xFFFFFFFF),
+    road = Color(0xE6FFFFFF),
 )
-// Dark mode: clearly lighter land than water, and borders that stand out.
+// Dark: deep blue water, teal-green land, light blue-grey roads (like the iPhone's dark map).
 private val DarkMap = MapColors(
-    water = Color(0xFF0A0D12), land = Color(0xFF2B303B), border = Color(0xFF6B7385),
-    coast = Color(0xFF2A3140), city = Color(0xFFC9CED8), cityHalo = Color(0xE62B303B),
+    water = Color(0xFF1C2A80), land = Color(0xFF2B6650), border = Color(0xFFC96787),
+    coast = Color(0xFF243A8C), city = Color(0xFFF2F4F8), cityHalo = Color(0xE61E4A3A),
+    river = Color(0xFF3550C8), motorway = Color(0xFFA9BCE6), mainRoad = Color(0xFF8EA2CF),
+    road = Color(0xB38EA2CF),
 )
 
 /**
@@ -130,6 +139,8 @@ fun WorldMap(
     onFocused: () -> Unit = {},
     /** A spot to mark with pulsing rings (the photo opened from Properties). */
     highlight: Offset? = null,
+    /** Receives the visible area (left, top, right, bottom in map units) on every frame. */
+    boundsOut: FloatArray? = null,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -383,6 +394,7 @@ fun WorldMap(
         val top = cy - size.height / 2f / w
         val right = cx + size.width / 2f / w
         val bottom = cy + size.height / 2f / w
+        boundsOut?.let { it[0] = left; it[1] = top; it[2] = right; it[3] = bottom }
         val lod = when {
             zoom < 3.5f -> 0
             zoom < 6f -> 1
@@ -399,6 +411,25 @@ fun WorldMap(
             }
             if (lod > 0 && data.lakes.intersects(left, top, right, bottom))
                 drawPath(data.lakes.path, colors.water)
+            // Rivers and roads (each kind from the zoom it belongs to), ~constant width on screen.
+            val px = 1f / w
+            for (g in data.lines) {
+                if (g.minZoom > zoom + 0.5f || !g.intersects(left, top, right, bottom)) continue
+                val (color, width) = when (g.kind) {
+                    3 -> colors.river to 1.3f
+                    0 -> colors.motorway to 2.4f
+                    1 -> colors.mainRoad to 1.6f
+                    else -> colors.road to 1.0f
+                }
+                drawPath(
+                    g.path, color,
+                    style = Stroke(
+                        width = width.dp.toPx() * px,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                        join = androidx.compose.ui.graphics.StrokeJoin.Round
+                    )
+                )
+            }
             // Borders ~1 dp wide on screen at any zoom (the path is drawn in world units).
             val border = Stroke(width = borderPx / w)
             for (country in data.countries) {
