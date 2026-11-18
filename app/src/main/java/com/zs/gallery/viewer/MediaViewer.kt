@@ -642,11 +642,11 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                             rotator.rotate(ctx.findActivity(), file, it.label == R.string.rotate_right, zoomHolder.value)
                         it.label == R.string.show_in_photos && file != null -> {
                             com.zs.gallery.files.TimelineJump.target = file.id
-                            navController.navigate(com.zs.gallery.files.RouteFiles()) {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
+                            // Straight back down to the Photos grid (no saved/restored tab stacks:
+                            // restoring one brought back an old person/photo screen instead).
+                            val start = navController.graph.findStartDestination().id
+                            if (!navController.popBackStack(start, inclusive = false))
+                                navController.navigate(com.zs.gallery.files.RouteFiles()) { launchSingleTop = true }
                         }
                         it.label == R.string.add_to_person && file != null ->
                             com.zs.gallery.people.AddToPerson.open(file.id)

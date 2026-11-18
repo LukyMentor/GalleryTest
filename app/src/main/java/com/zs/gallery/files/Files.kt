@@ -96,6 +96,10 @@ import com.zs.gallery.common.compose.FloatingActionMenu
 import com.zs.gallery.common.compose.FloatingLargeTopAppBar
 import com.zs.gallery.viewer.CountBubble
 import com.zs.gallery.viewer.ViewerActions
+import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.composed
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.border
 import androidx.compose.runtime.setValue
@@ -296,7 +300,7 @@ fun Files(viewState: FilesViewState) {
                                     .then(clickable)
                                     .then(
                                         if (TimelineJump.highlight == item.id)
-                                            Modifier.border(3.dp, AppTheme.colors.accent)
+                                            Modifier.jumpHighlight(AppTheme.colors.accent)
                                         else Modifier
                                     )
                             )
@@ -332,11 +336,17 @@ fun Files(viewState: FilesViewState) {
                         android.widget.Toast.makeText(ctx2, "This photo's folder is hidden from Photos", android.widget.Toast.LENGTH_SHORT).show()
                         return@LaunchedEffect
                     }
-                    TimelineJump.target = null
                     state.scrollToItem(lazy, -(state.layoutInfo.viewportSize.height / 3))
                     TimelineJump.highlight = id
-                    kotlinx.coroutines.delay(1800)
-                    if (TimelineJump.highlight == id) TimelineJump.highlight = null
+                    TimelineJump.target = null
+                }
+                // Separate from the jump (which ends when the target is cleared), so the mark
+                // really goes away.
+                val highlighted = TimelineJump.highlight
+                LaunchedEffect(highlighted) {
+                    if (highlighted == null) return@LaunchedEffect
+                    kotlinx.coroutines.delay(2600)
+                    if (TimelineJump.highlight == highlighted) TimelineJump.highlight = null
                 }
             }
             val currentPadding by rememberUpdatedState(contentPadding)
@@ -402,4 +412,40 @@ fun Files(viewState: FilesViewState) {
             }
         }
     )
+}
+
+/**
+ * The photo "Show in Photos" jumped to: a short pulse, an accent frame with a soft tint that
+ * holds for a moment and then fades away.
+ */
+private fun Modifier.jumpHighlight(accent: androidx.compose.ui.graphics.Color): Modifier = composed {
+    val glow = remember { androidx.compose.animation.core.Animatable(0f) }
+    val pulse = remember { androidx.compose.animation.core.Animatable(1f) }
+    LaunchedEffect(Unit) {
+        launch {
+            pulse.animateTo(0.9f, androidx.compose.animation.core.tween(180))
+            pulse.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.45f, stiffness = 300f))
+        }
+        glow.animateTo(1f, androidx.compose.animation.core.tween(200))
+        kotlinx.coroutines.delay(1500)
+        glow.animateTo(0f, androidx.compose.animation.core.tween(800))
+    }
+    this
+        .graphicsLayer {
+            scaleX = pulse.value
+            scaleY = pulse.value
+        }
+        .drawWithContent {
+            drawContent()
+            val a = glow.value
+            if (a <= 0f) return@drawWithContent
+            val stroke = 4.dp.toPx()
+            drawRect(accent.copy(alpha = 0.22f * a))
+            drawRect(
+                accent.copy(alpha = a),
+                topLeft = androidx.compose.ui.geometry.Offset(stroke / 2, stroke / 2),
+                size = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(stroke)
+            )
+        }
 }
