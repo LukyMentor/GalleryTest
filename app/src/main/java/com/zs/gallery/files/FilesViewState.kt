@@ -18,6 +18,8 @@
 
 package com.zs.gallery.files
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import android.app.Activity
 import android.net.Uri
 import androidx.compose.animation.BoundsTransform
