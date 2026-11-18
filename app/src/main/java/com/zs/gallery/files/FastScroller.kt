@@ -32,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -111,22 +112,37 @@ internal fun TimelineFastScroller(
     val scope = rememberCoroutineScope()
     val jump = remember { arrayOfNulls<Job>(1) }
 
-    // Number of grid lines currently on screen; used so that fraction 1 == end of the list.
+    // Height of a photo row (from a photo tile, never a header / gap / bar - those are much
+    // shorter and made the estimate, and with it the thumb, jump around while scrolling).
+    val lastTile = remember { intArrayOf(0) }
+    val tileRowPx by remember {
+        derivedStateOf {
+            val info = state.layoutInfo
+            val width = info.viewportSize.width
+            val h = info.visibleItemsInfo.firstOrNull { it.size.width in 1 until width - 1 }?.size?.height ?: 0
+            if (h > 0) lastTile[0] = h
+            lastTile[0]
+        }
+    }
+
+    // Number of grid lines on screen (fraction 1 == end of the list). From the screen height,
+    // so it stays the same while scrolling instead of changing with the headers in view.
     val visibleRows by remember(rows) {
         derivedStateOf {
-            val items = state.layoutInfo.visibleItemsInfo
-            if (items.isEmpty()) 1
-            else (rows.rowOf(items.last().index) - rows.rowOf(items.first().index)).coerceAtLeast(1)
+            val viewport = state.layoutInfo.viewportSize.height
+            if (tileRowPx <= 0 || viewport <= 0) 1 else (viewport / tileRowPx).coerceAtLeast(1)
         }
     }
 
     /** Scroll position as 0..1 (sub-row precision from the first item's scroll offset). */
     fun scrollFraction(): Float {
         val scrollable = (rows.total - visibleRows).coerceAtLeast(1)
+        if (!state.canScrollForward) return 1f
         val first = state.firstVisibleItemIndex
         val firstInfo = state.layoutInfo.visibleItemsInfo.firstOrNull()
         val rowHeight = firstInfo?.size?.height?.coerceAtLeast(1) ?: 1
-        val row = rows.rowOf(first) + state.firstVisibleItemScrollOffset / rowHeight.toFloat()
+        val within = (state.firstVisibleItemScrollOffset / rowHeight.toFloat()).coerceIn(0f, 1f)
+        val row = rows.rowOf(first) + within
         return (row / scrollable).coerceIn(0f, 1f)
     }
 
@@ -169,7 +185,8 @@ internal fun TimelineFastScroller(
     if (thumbAlpha == 0f) return
 
     BoxWithConstraints(modifier.fillMaxSize()) {
-        val topPx = with(density) { (topPadding + 8.dp).toPx() }
+        // Starts a bit below the top, so the thumb never sits on the top bar's buttons.
+        val topPx = with(density) { (topPadding + 72.dp).toPx() }
         val bottomPx = with(density) { (bottomPadding + 8.dp).toPx() }
         val thumbHeightPx = with(density) { ThumbHeight.toPx() }
         val heightPx = constraints.maxHeight.toFloat()
