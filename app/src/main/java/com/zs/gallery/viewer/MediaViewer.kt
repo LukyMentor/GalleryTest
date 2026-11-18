@@ -348,8 +348,9 @@ private fun Carousel(
     BackHandler {
         val zoom = focusedZoom
         when {
-            // reset zoom
-            zoom != null && !zoom.isZoomedOut -> scope.launch { zoom.resetZoom() }
+            // reset zoom - only if really zoomed in: pulling the properties sheet up could
+            // leave a tiny zoom/pan that made the first back gesture "do nothing".
+            zoom != null && (zoom.zoomFraction ?: 0f) > 0.02f -> scope.launch { zoom.resetZoom() }
             // else ask parent to handle back-press
             else -> onRequest(EVENT_BACK_PRESS)
         }
