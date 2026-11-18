@@ -83,6 +83,12 @@ import com.zs.gallery.viewer.RouteViewer
 /** The "Map" tab: where photos were taken. */
 object RouteMap : Route
 
+/** "Location" tapped in a photo's Properties: the map flies there and marks the spot. */
+object MapJump {
+    class Target(val id: Long, val latitude: Double, val longitude: Double)
+    var target by androidx.compose.runtime.mutableStateOf<Target?>(null)
+}
+
 @Composable
 fun MapScreen() {
     val context = LocalContext.current
@@ -114,12 +120,36 @@ fun MapScreen() {
 
     Box(Modifier.fillMaxSize()) {
         // Offline map bundled in the app: no internet, no API key.
+        // Coming from a photo's "Location": fly there, mark the spot, show that place's photos.
+        val jump = MapJump.target
+        val focus = remember(jump) {
+            jump?.let { mercator(it.latitude, it.longitude).let { (x, y) -> androidx.compose.ui.geometry.Offset(x, y) } }
+        }
+        var spot by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
+        LaunchedEffect(spot) {
+            if (spot == null) return@LaunchedEffect
+            kotlinx.coroutines.delay(4000)
+            spot = null
+        }
         WorldMap(
             photos = photos,
             dark = dark,
             accent = colors.accent,
             onClusterTap = { cluster -> selectedIds = cluster.photos.map { it.id }.toLongArray() },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            focus = focus,
+            highlight = spot,
+            onFocused = {
+                val j = jump
+                spot = focus
+                MapJump.target = null
+                if (j != null) {
+                    // That photo first, then others taken within ~1 km.
+                    val near = photos.filter { distanceKm(it.latitude, it.longitude, j.latitude, j.longitude) <= 1.0 }
+                        .map { it.id }.filter { it != j.id }
+                    selectedIds = (listOf(j.id) + near).toLongArray()
+                }
+            }
         )
 
         // Top: title + scan progress.
@@ -366,4 +396,15 @@ private fun PlaceStrip(
             }
         }
     }
+}
+
+
+private fun distanceKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+    val r = 6371.0
+    val dLat = Math.toRadians(lat2 - lat1)
+    val dLon = Math.toRadians(lon2 - lon1)
+    val a = kotlin.math.sin(dLat / 2).let { it * it } +
+            kotlin.math.cos(Math.toRadians(lat1)) * kotlin.math.cos(Math.toRadians(lat2)) *
+            kotlin.math.sin(dLon / 2).let { it * it }
+    return 2 * r * kotlin.math.asin(kotlin.math.sqrt(a))
 }

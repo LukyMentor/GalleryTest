@@ -124,6 +124,11 @@ fun WorldMap(
     accent: Color,
     onClusterTap: (PhotoCluster) -> Unit,
     modifier: Modifier = Modifier,
+    /** Fly the camera here (normalized map point), then [onFocused]. */
+    focus: Offset? = null,
+    onFocused: () -> Unit = {},
+    /** A spot to mark with pulsing rings (the photo opened from Properties). */
+    highlight: Offset? = null,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -171,6 +176,29 @@ fun WorldMap(
         cy = (minY + maxY) / 2
         clampCamera()
     }
+
+    // Flying to a photo's place ("Location" in a photo's Properties).
+    LaunchedEffect(focus, viewport) {
+        val target = focus ?: return@LaunchedEffect
+        if (viewport == IntSize.Zero) return@LaunchedEffect
+        fitted = true
+        val z0 = zoom; val x0 = cx; val y0 = cy
+        val z1 = 11f.coerceAtMost(MAX_ZOOM)
+        val t = androidx.compose.animation.core.Animatable(0f)
+        t.animateTo(1f, androidx.compose.animation.core.tween(700, easing = androidx.compose.animation.core.FastOutSlowInEasing)) {
+            zoom = z0 + (z1 - z0) * value
+            cx = x0 + (target.x - x0) * value
+            cy = y0 + (target.y - y0) * value
+            clampCamera()
+        }
+        onFocused()
+    }
+    val pulse = androidx.compose.animation.core.rememberInfiniteTransition(label = "spot")
+        .animateFloat(
+            0f, 1f,
+            androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1200)),
+            label = "pulse"
+        )
 
     // Clusters for the current zoom (recomputed only when the zoom changes noticeably).
     val bubblePx = with(density) { 52.dp.toPx() }
@@ -409,6 +437,22 @@ fun WorldMap(
             labels++
             drawCircle(colors.city, dot, p)
             drawText(layout, topLeft = Offset(box.left + 4f, box.top + 4f))
+        }
+
+        // The photo's spot: two rings growing and fading, under the bubbles.
+        if (highlight != null) {
+            val hc = Offset((highlight.x - left) * w, (highlight.y - top) * w)
+            val base = bubblePx / 2 + 4.dp.toPx()
+            for (k in 0..1) {
+                val p = (pulse.value + k * 0.5f) % 1f
+                drawCircle(
+                    accent.copy(alpha = (1f - p) * 0.9f),
+                    radius = base + p * 34.dp.toPx(),
+                    center = hc,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx() * (1f - p * 0.5f))
+                )
+            }
+            drawCircle(accent.copy(alpha = 0.18f), base, hc)
         }
 
         // Photo bubbles.

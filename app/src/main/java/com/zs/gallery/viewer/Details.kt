@@ -83,6 +83,8 @@ import com.zs.compose.theme.text.Header
 import com.zs.compose.theme.text.Label
 import com.zs.core.store.MediaFile
 import com.zs.gallery.R
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
@@ -195,7 +197,20 @@ private fun DetailsBody(value: MediaFile) = Column(verticalArrangement = Arrange
         val place by produceState<String?>(null, value.id) {
             this.value = com.zs.gallery.map.Places.describePhoto(context, value.id)
         }
-        place?.let { DetailRow(Icons.Outlined.Place, "Location", it) }
+        val navController = com.zs.gallery.common.compose.LocalNavController.current
+        val scope = rememberCoroutineScope()
+        place?.let {
+            DetailRow(Icons.Outlined.Place, "Location", it, onClick = {
+                scope.launch {
+                    val loc = com.zs.core.store.PhotoLocations.locationOf(context, value.id) ?: return@launch
+                    com.zs.gallery.map.MapJump.target = com.zs.gallery.map.MapJump.Target(value.id, loc[0], loc[1])
+                    // Straight to the Map tab (fresh, not a restored old stack).
+                    val start = navController.graph.findStartDestination().id
+                    navController.popBackStack(start, inclusive = false)
+                    navController.navigate(com.zs.gallery.map.RouteMap()) { launchSingleTop = true }
+                }
+            })
+        }
     }
     // Who's in it (photos and scanned videos).
     PeopleRow(value.id)
@@ -224,9 +239,13 @@ private fun DetailsBody(value: MediaFile) = Column(verticalArrangement = Arrange
 
 /** One property: icon in a soft accent circle, a small label and the value. */
 @Composable
-private fun DetailRow(icon: ImageVector, label: String, value: String) {
+private fun DetailRow(icon: ImageVector, label: String, value: String, onClick: (() -> Unit)? = null) {
     val colors = AppTheme.colors
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = if (onClick == null) Modifier
+        else Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick)
+    ) {
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
@@ -235,10 +254,16 @@ private fun DetailRow(icon: ImageVector, label: String, value: String) {
         ) {
             Icon(icon, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
         }
-        Column(Modifier.padding(start = 14.dp)) {
+        Column(Modifier.padding(start = 14.dp).weight(1f, fill = onClick != null)) {
             Label(label, style = AppTheme.typography.label2, color = colors.onBackground.copy(alpha = 0.6f))
             Label(value, style = AppTheme.typography.body1, maxLines = 2)
         }
+        // Tappable: a small arrow says "this takes you somewhere".
+        if (onClick != null)
+            Icon(
+                androidx.compose.material.icons.Icons.AutoMirrored.Outlined.KeyboardArrowRight, null,
+                tint = colors.onBackground.copy(alpha = 0.5f), modifier = Modifier.size(22.dp)
+            )
     }
 }
 
