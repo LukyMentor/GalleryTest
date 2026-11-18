@@ -10,6 +10,7 @@
 
 package com.zs.gallery.map
 
+import androidx.compose.animation.core.animateFloat
 import android.content.ContentUris
 import android.provider.MediaStore
 import androidx.compose.animation.core.Animatable
@@ -196,7 +197,7 @@ fun WorldMap(
     val pulse = androidx.compose.animation.core.rememberInfiniteTransition(label = "spot")
         .animateFloat(
             0f, 1f,
-            androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1200)),
+            androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween<Float>(1200)),
             label = "pulse"
         )
 
