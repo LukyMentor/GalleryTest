@@ -113,7 +113,8 @@ internal class FaceStore(context: Context) :
     /** Embeddings of faces, by person (person_id > 0) - for computing group centres. */
     fun embeddingsByPerson(): Map<Long, List<FloatArray>> {
         val map = HashMap<Long, MutableList<FloatArray>>()
-        readableDatabase.rawQuery("SELECT person_id, embedding FROM faces WHERE person_id > 0", null).use { c ->
+        // (Photos added to a person by hand without a detected face have no embedding.)
+        readableDatabase.rawQuery("SELECT person_id, embedding FROM faces WHERE person_id > 0 AND LENGTH(embedding) > 0", null).use { c ->
             while (c.moveToNext()) map.getOrPut(c.getLong(0)) { ArrayList() } += fromBlob(c.getBlob(1))
         }
         return map
@@ -243,6 +244,36 @@ internal class FaceStore(context: Context) :
 
     fun person(id: Long): Person? = people().firstOrNull { it.id == id }
 
+    /** Every detected face in one photo (grouped or not), left to right, with the person's name. */
+    fun facesIn(mediaId: Long): List<Pair<FaceRow, String?>> {
+        val names = names()
+        val list = ArrayList<Pair<FaceRow, String?>>()
+        readableDatabase.rawQuery(
+            "SELECT id, media_id, x1, y1, x2, y2, score, person_id FROM faces WHERE media_id = ? AND LENGTH(embedding) > 0",
+            arrayOf("$mediaId")
+        ).use { c -> while (c.moveToNext()) row(c).let { list += it to names[it.personId] } }
+        return list.sortedBy { it.first.box.left }
+    }
+
+    /** The user says this face is [personId]. */
+    fun assignFace(faceId: Long, personId: Long) {
+        writableDatabase.update("faces", ContentValues().apply { put("person_id", personId); put("locked", 1) },
+            "id = ?", arrayOf("$faceId"))
+        dropEmptyPersons()
+    }
+
+    /** The user says [personId] is in this photo, but no face was detected there. */
+    fun addManual(mediaId: Long, personId: Long) {
+        writableDatabase.insert("faces", null, ContentValues().apply {
+            put("media_id", mediaId)
+            put("x1", 0f); put("y1", 0f); put("x2", 1f); put("y2", 1f)
+            put("score", 0f)
+            put("embedding", ByteArray(0))
+            put("person_id", personId)
+            put("locked", 1)
+        })
+    }
+
     /** People in one photo: their face in *this* photo and their name (left to right). */
     fun peopleIn(mediaId: Long): List<Pair<FaceRow, String?>> {
         val names = names()
@@ -252,7 +283,8 @@ internal class FaceStore(context: Context) :
                     "JOIN persons p ON p.id = f.person_id WHERE f.media_id = ? AND f.person_id > 0 AND p.hidden = 0",
             arrayOf("$mediaId")
         ).use { c -> while (c.moveToNext()) row(c).let { list += it to names[it.personId] } }
-        return list.distinctBy { it.first.personId }.sortedBy { it.first.box.left }
+        // A real face beats a hand-added "whole photo" entry for the same person.
+        return list.sortedByDescending { it.first.score }.distinctBy { it.first.personId }.sortedBy { it.first.box.left }
     }
 
     /** Photos of a person, newest scanned first (the screen sorts them by date). */

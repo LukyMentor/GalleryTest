@@ -773,6 +773,8 @@ fun Home(
                         content()
                         // "Move to" / "Copy to" sheet, over everything.
                         com.zs.gallery.common.FolderPickerHost()
+                        // "Add to person" sheet (People).
+                        com.zs.gallery.people.AddToPersonHost()
                     }
                 }
             )

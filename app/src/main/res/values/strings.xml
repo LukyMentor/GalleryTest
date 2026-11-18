@@ -68,6 +68,7 @@
     <string name="move_to">Move to…</string>
     <string name="copy_to">Copy to…</string>
     <string name="rename">Rename</string>
+    <string name="add_to_person">Add to person</string>
     <string name="move_to_person">Move to person</string>
     <string name="not_this_person">Not this person</string>
     <string name="crop">Edit</string>

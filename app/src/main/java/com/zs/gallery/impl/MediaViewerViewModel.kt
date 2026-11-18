@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.RotateRight
 import androidx.compose.material.icons.outlined.RotateLeft
+import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
@@ -89,6 +90,7 @@ private val RESTORE = Action(R.string.restore, Icons.Outlined.Restore)
 private val QUICK_SHARE = Action(R.string.beam, Icons.Filled.NearbyShare)
 private val EDIT_IN = Action(R.string.edit_in, Icons.Outlined.Edit)
 private val ROTATE_LEFT = Action(R.string.rotate_left, Icons.Outlined.RotateLeft)
+private val ADD_TO_PERSON = Action(R.string.add_to_person, Icons.Outlined.PersonAdd)
 private val ROTATE_RIGHT = Action(R.string.rotate_right, Icons.Outlined.RotateRight)
 private val USE_AS = Action(R.string.wallpaper, Icons.Outlined.Wallpaper)
 private val GOOGLE_LENS = Action(R.string.lens, Icons.Outlined.DocumentScanner)
@@ -221,6 +223,8 @@ class MediaViewerViewModel(
             this += SHARE
             this += QUICK_SHARE
             if (image) {
+                // Handled by the viewer screen (opens the "who is it?" sheet).
+                this += ADD_TO_PERSON
                 this += ROTATE_LEFT
                 this += ROTATE_RIGHT
                 // Wallpaper only makes sense for images.

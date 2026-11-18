@@ -639,6 +639,8 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                             navController.navigate(com.zs.gallery.crop.RouteCrop(file.mediaUri))
                         (it.label == R.string.rotate_left || it.label == R.string.rotate_right) && file != null ->
                             rotator.rotate(ctx.findActivity(), file, it.label == R.string.rotate_right, zoomHolder.value)
+                        it.label == R.string.add_to_person && file != null ->
+                            com.zs.gallery.people.AddToPerson.open(file.id)
                         it.label == R.string.delete && file != null -> {
                             val activity = ctx.findActivity()
                             // By id: by the time it runs, the next photo is the focused one.
