@@ -243,6 +243,18 @@ internal class FaceStore(context: Context) :
 
     fun person(id: Long): Person? = people().firstOrNull { it.id == id }
 
+    /** People in one photo: their face in *this* photo and their name (left to right). */
+    fun peopleIn(mediaId: Long): List<Pair<FaceRow, String?>> {
+        val names = names()
+        val list = ArrayList<Pair<FaceRow, String?>>()
+        readableDatabase.rawQuery(
+            "SELECT f.id, f.media_id, f.x1, f.y1, f.x2, f.y2, f.score, f.person_id FROM faces f " +
+                    "JOIN persons p ON p.id = f.person_id WHERE f.media_id = ? AND f.person_id > 0 AND p.hidden = 0",
+            arrayOf("$mediaId")
+        ).use { c -> while (c.moveToNext()) row(c).let { list += it to names[it.personId] } }
+        return list.distinctBy { it.first.personId }.sortedBy { it.first.box.left }
+    }
+
     /** Photos of a person, newest scanned first (the screen sorts them by date). */
     fun photosOf(personId: Long): List<Long> {
         val list = ArrayList<Long>()

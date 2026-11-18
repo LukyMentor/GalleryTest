@@ -83,6 +83,13 @@ import com.zs.compose.theme.text.Header
 import com.zs.compose.theme.text.Label
 import com.zs.core.store.MediaFile
 import com.zs.gallery.R
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.runtime.collectAsState
+import androidx.compose.material.icons.outlined.Face
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.PhotoSizeSelectActual
@@ -189,6 +196,7 @@ private fun DetailsBody(value: MediaFile) = Column(verticalArrangement = Arrange
             this.value = com.zs.gallery.map.Places.describePhoto(context, value.id)
         }
         place?.let { DetailRow(Icons.Outlined.Place, "Location", it) }
+        PeopleRow(value.id)
     }
     // Folder: "Phone › DCIM › Camera" instead of /storage/emulated/0/...
     val folder = value.path.substringBeforeLast("/")
@@ -325,5 +333,60 @@ fun DetailsSheet(
         Spacer(Modifier.size(18.dp))
         DetailsBody(value)
         Spacer(Modifier.size(8.dp))
+    }
+}
+
+
+/**
+ * Who's in the photo (from the People scan): small face bubbles, with the name under the named
+ * ones. Tap one to open that person. Nothing is shown if nobody was found.
+ */
+@Composable
+private fun PeopleRow(mediaId: Long) {
+    val context = LocalContext.current
+    val navController = com.zs.gallery.common.compose.LocalNavController.current
+    val version by com.zs.gallery.people.FaceIndexer.version.collectAsState()
+    val people by produceState(emptyList<Pair<com.zs.gallery.people.FaceRow, String?>>(), mediaId, version) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { com.zs.gallery.people.FaceIndexer.store(context).peopleIn(mediaId) }.getOrDefault(emptyList())
+        }
+    }
+    if (people.isEmpty()) return
+    val colors = AppTheme.colors
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(40.dp)
+                .background(colors.accent.copy(alpha = 0.16f), CircleShape)
+        ) {
+            Icon(Icons.Outlined.Face, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
+        }
+        Column(Modifier.padding(start = 14.dp)) {
+            Label("People", style = AppTheme.typography.label2, color = colors.onBackground.copy(alpha = 0.6f))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(top = 4.dp)
+            ) {
+                for ((face, name) in people) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { navController.navigate(com.zs.gallery.people.RoutePerson(face.personId)) }
+                            .padding(2.dp)
+                    ) {
+                        com.zs.gallery.people.FaceAvatar(face, 40.dp)
+                        if (name != null)
+                            Label(
+                                name, style = AppTheme.typography.label3, maxLines = 1,
+                                modifier = Modifier.padding(top = 3.dp).widthIn(max = 72.dp)
+                            )
+                    }
+                }
+            }
+        }
     }
 }
