@@ -205,6 +205,8 @@ object FaceIndexer {
             var done = 0
             for (photo in todo) {
                 coroutineContext.ensureActive()
+                // Let a "Re-group" request in between photos.
+                kotlinx.coroutines.yield()
                 val start = SystemClock.elapsedRealtime()
                 _status.update { it.copy(current = photo.name) }
                 val faces = runCatching { process(context, engine, photo.id) }.getOrDefault(emptyList())
