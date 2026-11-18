@@ -96,6 +96,8 @@ import com.zs.gallery.common.compose.FloatingActionMenu
 import com.zs.gallery.common.compose.FloatingLargeTopAppBar
 import com.zs.gallery.viewer.CountBubble
 import com.zs.gallery.viewer.ViewerActions
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.border
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -292,6 +294,11 @@ fun Files(viewState: FilesViewState) {
                                     .animateItem()
                                     .then(RouteFiles.sharedElement(item.id))
                                     .then(clickable)
+                                    .then(
+                                        if (TimelineJump.highlight == item.id)
+                                            Modifier.border(3.dp, AppTheme.colors.accent)
+                                        else Modifier
+                                    )
                             )
                         }
                     )
@@ -310,6 +317,28 @@ fun Files(viewState: FilesViewState) {
                 data?.takeIf { it.isNotEmpty() }?.let { TimelineIndex(it, byDate, leading) }
             }
             val currentTimeline by rememberUpdatedState(timeline)
+            // "Show in Photos": scroll to the photo (a third down the screen) and mark it briefly.
+            if (viewState.isTimeline) {
+                val jump = TimelineJump.target
+                val ctx2 = LocalContext.current
+                LaunchedEffect(jump, timeline) {
+                    val id = jump ?: return@LaunchedEffect
+                    val index = timeline ?: return@LaunchedEffect
+                    val lazy = index.lazyIndexOf(id)
+                    if (lazy < 0) {
+                        // Filtered out (e.g. "Videos" chosen): show everything and try again.
+                        if (viewState.filter != MediaFilter.ALL) { viewState.filter = MediaFilter.ALL; return@LaunchedEffect }
+                        TimelineJump.target = null
+                        android.widget.Toast.makeText(ctx2, "This photo's folder is hidden from Photos", android.widget.Toast.LENGTH_SHORT).show()
+                        return@LaunchedEffect
+                    }
+                    TimelineJump.target = null
+                    state.scrollToItem(lazy, -(state.layoutInfo.viewportSize.height / 3))
+                    TimelineJump.highlight = id
+                    kotlinx.coroutines.delay(1800)
+                    if (TimelineJump.highlight == id) TimelineJump.highlight = null
+                }
+            }
             val currentPadding by rememberUpdatedState(contentPadding)
             val density = LocalDensity.current
             val layoutDirection = LocalLayoutDirection.current

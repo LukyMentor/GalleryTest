@@ -149,6 +149,7 @@ class FilesViewModel(
 
     override val supportsFilters: Boolean = source != SOURCE_BIN
     override val pickMode: Boolean = source == SOURCE_PICK
+    override val isTimeline: Boolean = source == SOURCE_TIMELINE
     override var filter: MediaFilter by mutableStateOf(MediaFilter.ALL)
     override var order: MediaOrder by mutableStateOf(MediaOrder.NEWEST)
     override var groupedBySize: Boolean by mutableStateOf(false)

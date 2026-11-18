@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.RotateRight
 import androidx.compose.material.icons.outlined.RotateLeft
 import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.StarBorder
@@ -61,6 +62,7 @@ import com.zs.gallery.common.WallpaperIntent
 import com.zs.gallery.common.debounceAfterFirst
 import com.zs.gallery.common.icons.NearbyShare
 import com.zs.gallery.files.RouteFiles.SOURCE_BIN
+import com.zs.gallery.files.RouteFiles.SOURCE_TIMELINE
 import com.zs.gallery.files.RouteFiles.SOURCE_FAV
 import com.zs.gallery.files.RouteFiles.SOURCE_FOLDER
 import com.zs.gallery.settings.Settings
@@ -91,6 +93,7 @@ private val QUICK_SHARE = Action(R.string.beam, Icons.Filled.NearbyShare)
 private val EDIT_IN = Action(R.string.edit_in, Icons.Outlined.Edit)
 private val ROTATE_LEFT = Action(R.string.rotate_left, Icons.Outlined.RotateLeft)
 private val ADD_TO_PERSON = Action(R.string.add_to_person, Icons.Outlined.PersonAdd)
+private val SHOW_IN_PHOTOS = Action(R.string.show_in_photos, Icons.Outlined.GridView)
 private val ROTATE_RIGHT = Action(R.string.rotate_right, Icons.Outlined.RotateRight)
 private val USE_AS = Action(R.string.wallpaper, Icons.Outlined.Wallpaper)
 private val GOOGLE_LENS = Action(R.string.lens, Icons.Outlined.DocumentScanner)
@@ -220,6 +223,8 @@ class MediaViewerViewModel(
             this += if (image) com.zs.gallery.crop.CROP else EDIT_IN
             this += DELETE
             // In the "⋮" menu.
+            // Opened from somewhere else (a person, folder, map...): jump to it in the Photos grid.
+            if (source != SOURCE_TIMELINE) this += SHOW_IN_PHOTOS
             this += SHARE
             this += QUICK_SHARE
             if (image) {

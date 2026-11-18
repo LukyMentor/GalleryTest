@@ -79,6 +79,17 @@ internal class TimelineIndex(
     }
 
     /** Section that contains the lazy item [lazyIndex]. */
+    /** Lazy grid index of the photo [id], or -1 if it isn't in this list. */
+    fun lazyIndexOf(id: Long): Int {
+        val flat = flatIndexOf[id] ?: return -1
+        var before = 0
+        for (s in 0 until sections) {
+            if (flat < before + sizes[s]) return startIndex[s] + 1 + (flat - before)
+            before += sizes[s]
+        }
+        return -1
+    }
+
     fun sectionOf(lazyIndex: Int): Int {
         if (sections == 0) return 0
         var lo = 0

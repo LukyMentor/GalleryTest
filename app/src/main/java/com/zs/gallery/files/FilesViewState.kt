@@ -97,6 +97,9 @@ enum class MediaOrder { NEWEST, OLDEST, LARGEST }
 
 interface FilesViewState : SelectionTracker {
 
+    /** The main Photos grid (not a folder, favourites, ...). */
+    val isTimeline: Boolean get() = false
+
     /** Picking photos for a new folder: a tap selects instead of opening the photo. */
     val pickMode: Boolean get() = false
 
@@ -153,4 +156,11 @@ object PhotoSets {
         return key
     }
     fun get(key: String?): LongArray? = key?.let { synchronized(sets) { sets[it] } }
+}
+
+
+/** "Show in Photos" from the viewer: the Photos grid scrolls to this photo and marks it. */
+object TimelineJump {
+    var target by androidx.compose.runtime.mutableStateOf<Long?>(null)
+    var highlight by androidx.compose.runtime.mutableStateOf<Long?>(null)
 }

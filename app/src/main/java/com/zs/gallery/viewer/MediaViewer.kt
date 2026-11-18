@@ -96,6 +96,7 @@ import com.zs.gallery.common.compose.LocalNavController
 import com.zs.gallery.common.compose.LocalSystemFacade
 import com.zs.gallery.common.compose.OverflowMenu
 import com.zs.gallery.common.compose.background
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import com.zs.gallery.R
 import androidx.compose.animation.core.FastOutSlowInEasing
 import com.zs.core.store.MediaFile
@@ -639,6 +640,14 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                             navController.navigate(com.zs.gallery.crop.RouteCrop(file.mediaUri))
                         (it.label == R.string.rotate_left || it.label == R.string.rotate_right) && file != null ->
                             rotator.rotate(ctx.findActivity(), file, it.label == R.string.rotate_right, zoomHolder.value)
+                        it.label == R.string.show_in_photos && file != null -> {
+                            com.zs.gallery.files.TimelineJump.target = file.id
+                            navController.navigate(com.zs.gallery.files.RouteFiles()) {
+                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
                         it.label == R.string.add_to_person && file != null ->
                             com.zs.gallery.people.AddToPerson.open(file.id)
                         it.label == R.string.delete && file != null -> {
