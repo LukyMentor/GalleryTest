@@ -269,6 +269,21 @@ class DetailsSheetState(private val scope: CoroutineScope, private val density: 
         animateTo(if (open) height.toFloat() else 0f)
     }
 
+    /**
+     * The content changed size (e.g. swiped to a photo with fewer details): an open sheet follows,
+     * so it stays sitting on the bottom edge instead of floating (or being cut off).
+     */
+    fun onHeightChanged(newHeight: Int) {
+        val old = height
+        height = newHeight
+        if (old <= 0 || newHeight == old) return
+        val open = reveal.floatValue >= old - 1f
+        when {
+            open -> animateTo(newHeight.toFloat())
+            reveal.floatValue > newHeight -> reveal.floatValue = newHeight.toFloat()
+        }
+    }
+
     fun open() = animateTo(height.toFloat())
     fun close() = animateTo(0f)
 
@@ -308,7 +323,7 @@ fun DetailsSheet(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .onSizeChanged { state.height = it.height }
+            .onSizeChanged { state.onHeightChanged(it.height) }
             .graphicsLayer {
                 // Hidden below the screen edge until pulled up.
                 translationY = size.height - state.reveal.floatValue
