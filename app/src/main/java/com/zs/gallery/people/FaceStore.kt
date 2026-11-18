@@ -37,7 +37,7 @@ class Person(
  * locked: set by the user (moved / removed), never changed by automatic grouping.
  */
 internal class FaceStore(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "faces.db", null, 2) {
+    SQLiteOpenHelper(context.applicationContext, "faces.db", null, 3) {
 
     private val crops = java.io.File(context.applicationContext.filesDir, "face_crops")
 
@@ -68,12 +68,14 @@ internal class FaceStore(context: Context) :
         )
         db.execSQL("CREATE INDEX faces_media ON faces(media_id)")
         db.execSQL("CREATE INDEX faces_person ON faces(person_id)")
-        db.execSQL("CREATE TABLE persons (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, hidden INTEGER DEFAULT 0)")
+        db.execSQL("CREATE TABLE persons (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, hidden INTEGER DEFAULT 0, cover_face INTEGER)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         // 2: videos (kind 1).
         if (oldVersion < 2) db.execSQL("ALTER TABLE faces ADD COLUMN kind INTEGER DEFAULT 0")
+        // 3: picture chosen by the user.
+        if (oldVersion < 3) db.execSQL("ALTER TABLE persons ADD COLUMN cover_face INTEGER")
     }
 
     // --- scanning ---------------------------------------------------------------------------
@@ -204,6 +206,17 @@ internal class FaceStore(context: Context) :
 
     // --- user edits ---------------------------------------------------------------------------
 
+    /** Uses this person's face in [mediaId] as their picture (a real face over a hand-added one). */
+    fun setCover(personId: Long, mediaId: Long): Boolean {
+        val faceId = readableDatabase.rawQuery(
+            "SELECT id FROM faces WHERE person_id = ? AND media_id = ? ORDER BY LENGTH(embedding) DESC, score DESC LIMIT 1",
+            arrayOf("$personId", "$mediaId")
+        ).use { if (it.moveToFirst()) it.getLong(0) else null } ?: return false
+        writableDatabase.update("persons", ContentValues().apply { put("cover_face", faceId) },
+            "id = ?", arrayOf("$personId"))
+        return true
+    }
+
     fun rename(personId: Long, name: String?) {
         writableDatabase.update("persons", ContentValues().apply {
             if (name.isNullOrBlank()) putNull("name") else put("name", name.trim())
@@ -250,10 +263,14 @@ internal class FaceStore(context: Context) :
 
     fun people(): List<Person> {
         val names = HashMap<Long, Pair<String?, Boolean>>()
-        readableDatabase.rawQuery("SELECT id, name, hidden FROM persons", null).use { c ->
-            while (c.moveToNext())
+        val chosen = HashMap<Long, Long>()   // face id -> person (picture picked by the user)
+        readableDatabase.rawQuery("SELECT id, name, hidden, cover_face FROM persons", null).use { c ->
+            while (c.moveToNext()) {
                 names[c.getLong(0)] = (if (c.isNull(1)) null else c.getString(1)) to (c.getInt(2) == 1)
+                if (!c.isNull(3)) chosen[c.getLong(3)] = c.getLong(0)
+            }
         }
+        val picked = HashMap<Long, FaceRow>()
         val photos = HashMap<Long, HashSet<Long>>()
         val cover = HashMap<Long, FaceRow>()
         readableDatabase.rawQuery(
@@ -262,6 +279,7 @@ internal class FaceStore(context: Context) :
             while (c.moveToNext()) {
                 val row = row(c)
                 photos.getOrPut(row.personId) { HashSet() } += row.mediaId
+                if (chosen[row.id] == row.personId) picked[row.personId] = row
                 // Picture: the biggest, clearest face.
                 val best = cover[row.personId]
                 if (best == null || quality(row) > quality(best)) cover[row.personId] = row
@@ -269,7 +287,7 @@ internal class FaceStore(context: Context) :
         }
         return names.mapNotNull { (id, info) ->
             val n = photos[id]?.size ?: return@mapNotNull null
-            Person(id, info.first, info.second, n, cover[id])
+            Person(id, info.first, info.second, n, picked[id] ?: cover[id])
         }.sortedWith(compareByDescending<Person> { it.name != null }.thenByDescending { it.photos })
     }
 

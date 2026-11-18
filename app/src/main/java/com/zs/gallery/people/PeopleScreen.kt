@@ -46,6 +46,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CallMerge
+import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Face
 import androidx.compose.material.icons.outlined.PersonAdd
@@ -454,7 +455,10 @@ fun PersonScreen(id: Long) {
     val selected = remember { mutableStateListOf<Long>() }
     // What the person picker is for: moving photos, or merging this whole person.
     var picker by remember { mutableStateOf<String?>(null) }
+    // Choosing which photo their picture comes from.
+    var pickingCover by remember { mutableStateOf(false) }
     BackHandler(enabled = selected.isNotEmpty() && picker == null) { selected.clear() }
+    BackHandler(enabled = pickingCover) { pickingCover = false }
 
     fun edit(block: () -> Unit) {
         scope.launch {
@@ -490,6 +494,8 @@ fun PersonScreen(id: Long) {
                                 edit { store.rename(id, name) }
                             }
                         })
+                        IconButton(icon = Icons.Outlined.AccountCircle, contentDescription = "Choose picture",
+                            onClick = { selected.clear(); pickingCover = true })
                         IconButton(icon = Icons.Outlined.CallMerge, contentDescription = "Same person as…",
                             onClick = { picker = "merge" })
                         IconButton(
@@ -557,13 +563,23 @@ fun PersonScreen(id: Long) {
                         .background(colors.background(4.dp))
                         .combinedClickable(
                             onClick = {
-                                if (selected.isNotEmpty()) {
+                                if (pickingCover) {
+                                    pickingCover = false
+                                    scope.launch {
+                                        val ok = withContext(Dispatchers.IO) { store.setCover(id, media) }
+                                        FaceIndexer.changed()
+                                        android.widget.Toast.makeText(
+                                            context, if (ok) "Picture changed" else "No face of them in that photo",
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                } else if (selected.isNotEmpty()) {
                                     if (isSelected) selected.remove(media) else selected.add(media)
                                 } else navController.navigate(
                                     RouteViewer(RouteFiles.SOURCE_IDS, media, PhotoSets.put(photos.toLongArray()))
                                 )
                             },
-                            onLongClick = { if (isSelected) selected.remove(media) else selected.add(media) }
+                            onLongClick = { if (!pickingCover) { if (isSelected) selected.remove(media) else selected.add(media) } }
                         )
                         .then(
                             if (isSelected) Modifier.border(3.dp, colors.accent).padding(3.dp) else Modifier
@@ -586,6 +602,27 @@ fun PersonScreen(id: Long) {
                 bottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 96.dp,
                 modifier = Modifier.matchParentSize()
             )
+        // "Tap a photo…" hint while choosing their picture.
+        AnimatedVisibility(
+            visible = pickingCover,
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(colors.accent)
+                    .padding(start = 18.dp, end = 6.dp, top = 6.dp, bottom = 6.dp)
+            ) {
+                Label("Tap the photo for their picture", color = colors.onAccent, fontWeight = FontWeight.Medium)
+                SmallPill("Cancel") { pickingCover = false }
+            }
+        }
         ViewerActions(
             visible = selected.isNotEmpty(),
             actions = listOf(MOVE_TO_PERSON, NOT_THIS_PERSON),
