@@ -300,6 +300,16 @@ private val SystemFacade.density: Density
  * @param route The destination route.
  */
 private fun NavController.toRoute(route: Route) {
+    val start = graph.findStartDestination()
+    // Photos is the start screen itself: just go back down to it. Navigating to it with
+    // "restore state" brought back whatever tab had been saved last (e.g. the Map), so the
+    // Photos button seemed to do nothing / opened the Map.
+    if (start.route?.substringBefore('/') == route.domain || start.domain == route.domain) {
+        // (The tab being left is still saved, so the Map / People come back as they were.)
+        if (!popBackStack(start.id, inclusive = false, saveState = true) && currentDestination?.id != start.id)
+            navigate(route()) { launchSingleTop = true }
+        return
+    }
     navigate(route()) {
         // Pop up to the start destination of the graph to
         // avoid building up a large stack of destinations
