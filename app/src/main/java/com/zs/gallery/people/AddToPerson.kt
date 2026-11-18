@@ -71,12 +71,18 @@ object AddToPerson {
     var batch by mutableStateOf<LongArray?>(null)
         private set
 
-    fun open(id: Long) {
+    /** Which of the ids are videos (their hand-added entries show the video's thumbnail). */
+    internal var videos: Set<Long> = emptySet()
+        private set
+
+    fun open(id: Long, video: Boolean = false) {
+        videos = if (video) setOf(id) else emptySet()
         mediaId = id
     }
 
-    fun openMany(ids: LongArray) {
-        if (ids.size == 1) open(ids[0]) else batch = ids
+    fun openMany(ids: LongArray, videoIds: Set<Long> = emptySet()) {
+        videos = videoIds
+        if (ids.size == 1) open(ids[0], ids[0] in videoIds) else batch = ids
     }
 
     fun close() {
@@ -149,7 +155,7 @@ private fun Sheet(mediaId: Long) {
         scope.launch {
             val name = withContext(Dispatchers.IO) {
                 val target = if (person == NEW_PERSON) store.newPerson() else person
-                if (chosenFace == WHOLE_PHOTO) store.addManual(mediaId, target)
+                if (chosenFace == WHOLE_PHOTO) store.addManual(mediaId, target, video = mediaId in AddToPerson.videos)
                 else store.assignFace(chosenFace, target)
                 store.names()[target]
             }
@@ -318,7 +324,7 @@ private fun BatchSheet(ids: LongArray) {
                         scope.launch {
                             withContext(Dispatchers.IO) {
                                 val resolved = targets.map { if (it == NEW_PERSON) store.newPerson() else it }
-                                store.addPhotos(ids.toList(), resolved)
+                                store.addPhotos(ids.toList(), resolved, AddToPerson.videos)
                             }
                             FaceIndexer.changed()
                             AddToPerson.close()

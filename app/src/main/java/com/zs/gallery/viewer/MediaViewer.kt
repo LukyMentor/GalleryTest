@@ -649,7 +649,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                                 navController.navigate(com.zs.gallery.files.RouteFiles()) { launchSingleTop = true }
                         }
                         it.label == R.string.add_to_person && file != null ->
-                            com.zs.gallery.people.AddToPerson.open(file.id)
+                            com.zs.gallery.people.AddToPerson.open(file.id, video = !file.isImage)
                         it.label == R.string.delete && file != null -> {
                             val activity = ctx.findActivity()
                             // By id: by the time it runs, the next photo is the focused one.

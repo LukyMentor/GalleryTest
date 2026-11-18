@@ -16,6 +16,8 @@ class FaceRow(
     val box: RectF,
     val score: Float,
     val personId: Long,
+    /** From a video (its picture is a saved crop of the frame, see [FaceStore.cropFile]). */
+    val isVideo: Boolean = false,
 )
 
 class Person(
@@ -35,21 +37,44 @@ class Person(
  * locked: set by the user (moved / removed), never changed by automatic grouping.
  */
 internal class FaceStore(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "faces.db", null, 1) {
+    SQLiteOpenHelper(context.applicationContext, "faces.db", null, 2) {
+
+    private val crops = java.io.File(context.applicationContext.filesDir, "face_crops")
+
+    /** Saved picture of a video face. */
+    fun cropFile(faceId: Long) = java.io.File(crops, "$faceId.jpg")
+
+    fun saveCrop(faceId: Long, bitmap: android.graphics.Bitmap) {
+        crops.mkdirs()
+        cropFile(faceId).outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 88, it) }
+    }
+
+    /** Deletes crops of faces that no longer exist. */
+    fun dropOrphanCrops() {
+        val files = crops.listFiles() ?: return
+        val ids = HashSet<Long>()
+        readableDatabase.rawQuery("SELECT id FROM faces WHERE kind = 1", null).use { c ->
+            while (c.moveToNext()) ids += c.getLong(0)
+        }
+        for (f in files) if (f.nameWithoutExtension.toLongOrNull() !in ids) f.delete()
+    }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE scanned (media_id INTEGER PRIMARY KEY, modified INTEGER, faces INTEGER)")
         db.execSQL(
             "CREATE TABLE faces (id INTEGER PRIMARY KEY AUTOINCREMENT, media_id INTEGER, " +
                     "x1 REAL, y1 REAL, x2 REAL, y2 REAL, score REAL, embedding BLOB, " +
-                    "person_id INTEGER DEFAULT 0, locked INTEGER DEFAULT 0)"
+                    "person_id INTEGER DEFAULT 0, locked INTEGER DEFAULT 0, kind INTEGER DEFAULT 0)"
         )
         db.execSQL("CREATE INDEX faces_media ON faces(media_id)")
         db.execSQL("CREATE INDEX faces_person ON faces(person_id)")
         db.execSQL("CREATE TABLE persons (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, hidden INTEGER DEFAULT 0)")
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        // 2: videos (kind 1).
+        if (oldVersion < 2) db.execSQL("ALTER TABLE faces ADD COLUMN kind INTEGER DEFAULT 0")
+    }
 
     // --- scanning ---------------------------------------------------------------------------
 
@@ -66,7 +91,7 @@ internal class FaceStore(context: Context) :
     fun faceCount(): Int = count("SELECT COUNT(*) FROM faces")
 
     /** Saves the faces of one photo (replacing older results for it). Returns the new face ids. */
-    fun saveScan(mediaId: Long, modified: Long, faces: List<Pair<RectF, Pair<Float, FloatArray>>>): List<Long> {
+    fun saveScan(mediaId: Long, modified: Long, faces: List<Pair<RectF, Pair<Float, FloatArray>>>, kind: Int = 0): List<Long> {
         val db = writableDatabase
         val ids = ArrayList<Long>()
         db.beginTransaction()
@@ -80,6 +105,7 @@ internal class FaceStore(context: Context) :
                     put("score", score)
                     put("embedding", toBlob(embedding))
                     put("person_id", 0)
+                    put("kind", kind)
                 })
             }
             db.insertWithOnConflict("scanned", null, ContentValues().apply {
@@ -91,6 +117,11 @@ internal class FaceStore(context: Context) :
         }
         return ids
     }
+
+    /** Whether [mediaId]'s scan came from a video. */
+    fun isVideo(mediaId: Long): Boolean =
+        readableDatabase.rawQuery("SELECT 1 FROM faces WHERE media_id = ? AND kind = 1 LIMIT 1", arrayOf("$mediaId"))
+            .use { it.moveToFirst() }
 
     /** Forgets photos that no longer exist. */
     fun removeMedia(ids: Collection<Long>) {
@@ -226,7 +257,7 @@ internal class FaceStore(context: Context) :
         val photos = HashMap<Long, HashSet<Long>>()
         val cover = HashMap<Long, FaceRow>()
         readableDatabase.rawQuery(
-            "SELECT id, media_id, x1, y1, x2, y2, score, person_id FROM faces WHERE person_id > 0", null
+            "SELECT id, media_id, x1, y1, x2, y2, score, person_id, kind FROM faces WHERE person_id > 0", null
         ).use { c ->
             while (c.moveToNext()) {
                 val row = row(c)
@@ -249,7 +280,7 @@ internal class FaceStore(context: Context) :
         val names = names()
         val list = ArrayList<Pair<FaceRow, String?>>()
         readableDatabase.rawQuery(
-            "SELECT id, media_id, x1, y1, x2, y2, score, person_id FROM faces WHERE media_id = ? AND LENGTH(embedding) > 0",
+            "SELECT id, media_id, x1, y1, x2, y2, score, person_id, kind FROM faces WHERE media_id = ? AND LENGTH(embedding) > 0",
             arrayOf("$mediaId")
         ).use { c -> while (c.moveToNext()) row(c).let { list += it to names[it.personId] } }
         return list.sortedBy { it.first.box.left }
@@ -266,7 +297,7 @@ internal class FaceStore(context: Context) :
      * Adds photos to people in one go. A photo with exactly one face, added to one person, gets
      * that face; otherwise the whole photo is added. Photos already with that person are skipped.
      */
-    fun addPhotos(mediaIds: Collection<Long>, personIds: Collection<Long>) {
+    fun addPhotos(mediaIds: Collection<Long>, personIds: Collection<Long>, videos: Set<Long> = emptySet()) {
         inTransaction {
             for (m in mediaIds) {
                 val faces = facesIn(m)
@@ -276,7 +307,7 @@ internal class FaceStore(context: Context) :
                     if (only != null && personIds.size == 1)
                         writableDatabase.update("faces", ContentValues().apply { put("person_id", p); put("locked", 1) },
                             "id = ?", arrayOf("${only.first.id}"))
-                    else addManual(m, p)
+                    else addManual(m, p, video = m in videos)
                 }
             }
         }
@@ -284,8 +315,9 @@ internal class FaceStore(context: Context) :
     }
 
     /** The user says [personId] is in this photo, but no face was detected there. */
-    fun addManual(mediaId: Long, personId: Long) {
+    fun addManual(mediaId: Long, personId: Long, video: Boolean = false) {
         writableDatabase.insert("faces", null, ContentValues().apply {
+            put("kind", if (video) 1 else 0)
             put("media_id", mediaId)
             put("x1", 0f); put("y1", 0f); put("x2", 1f); put("y2", 1f)
             put("score", 0f)
@@ -300,7 +332,7 @@ internal class FaceStore(context: Context) :
         val names = names()
         val list = ArrayList<Pair<FaceRow, String?>>()
         readableDatabase.rawQuery(
-            "SELECT f.id, f.media_id, f.x1, f.y1, f.x2, f.y2, f.score, f.person_id FROM faces f " +
+            "SELECT f.id, f.media_id, f.x1, f.y1, f.x2, f.y2, f.score, f.person_id, f.kind FROM faces f " +
                     "JOIN persons p ON p.id = f.person_id WHERE f.media_id = ? AND f.person_id > 0 AND p.hidden = 0",
             arrayOf("$mediaId")
         ).use { c -> while (c.moveToNext()) row(c).let { list += it to names[it.personId] } }
@@ -317,12 +349,12 @@ internal class FaceStore(context: Context) :
         return list
     }
 
-    private fun quality(r: FaceRow) = r.box.width() * r.box.height() * r.score
+    private fun quality(r: FaceRow) = r.box.width() * r.box.height() * r.score * (if (r.isVideo) 0.5f else 1f)
 
     private fun row(c: android.database.Cursor) = FaceRow(
         id = c.getLong(0), mediaId = c.getLong(1),
         box = RectF(c.getFloat(2), c.getFloat(3), c.getFloat(4), c.getFloat(5)),
-        score = c.getFloat(6), personId = c.getLong(7)
+        score = c.getFloat(6), personId = c.getLong(7), isVideo = c.getInt(8) == 1
     )
 
     private fun count(sql: String): Int = readableDatabase.rawQuery(sql, null).use { c ->

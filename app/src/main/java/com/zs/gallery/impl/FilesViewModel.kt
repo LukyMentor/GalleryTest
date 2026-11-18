@@ -395,9 +395,12 @@ class FilesViewModel(
                 }
                 ADD_TO_PERSON -> {
                     val wanted = focused.toHashSet()
-                    val images = data?.values?.flatten()?.filter { it.id in wanted && it.isImage }.orEmpty()
-                    if (images.isEmpty()) return@launch
-                    com.zs.gallery.people.AddToPerson.openMany(images.map { it.id }.toLongArray())
+                    val files = data?.values?.flatten()?.filter { it.id in wanted }.orEmpty()
+                    if (files.isEmpty()) return@launch
+                    com.zs.gallery.people.AddToPerson.openMany(
+                        files.map { it.id }.toLongArray(),
+                        files.filter { !it.isImage }.mapTo(HashSet()) { it.id }
+                    )
                     clear()
                 }
                 MOVE, COPY, RENAME -> {

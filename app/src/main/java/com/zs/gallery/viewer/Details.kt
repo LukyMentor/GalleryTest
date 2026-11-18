@@ -196,8 +196,9 @@ private fun DetailsBody(value: MediaFile) = Column(verticalArrangement = Arrange
             this.value = com.zs.gallery.map.Places.describePhoto(context, value.id)
         }
         place?.let { DetailRow(Icons.Outlined.Place, "Location", it) }
-        PeopleRow(value.id)
     }
+    // Who's in it (photos and scanned videos).
+    PeopleRow(value.id)
     // Folder: "Phone › DCIM › Camera" instead of /storage/emulated/0/...
     val folder = value.path.substringBeforeLast("/")
     DetailRow(

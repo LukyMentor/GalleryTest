@@ -225,6 +225,7 @@ class MediaViewerViewModel(
             // In the "⋮" menu.
             // Opened from somewhere else (a person, folder, map...): jump to it in the Photos grid.
             if (source != SOURCE_TIMELINE) this += SHOW_IN_PHOTOS
+            if (!image) this += ADD_TO_PERSON
             this += SHARE
             this += QUICK_SHARE
             if (image) {

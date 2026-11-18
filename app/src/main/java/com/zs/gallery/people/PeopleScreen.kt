@@ -80,6 +80,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.ui.zIndex
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import com.zs.compose.foundation.findActivity
@@ -128,6 +131,21 @@ fun FaceAvatar(face: FaceRow?, size: Dp, modifier: Modifier = Modifier) {
             contentAlignment = Alignment.Center,
             modifier = modifier.size(size).background(colors.accent.copy(alpha = 0.16f), CircleShape)
         ) { Icon(Icons.Outlined.Face, null, tint = colors.accent) }
+        return
+    }
+    if (face.isVideo) {
+        // Video faces: the crop saved during the scan (or the video's own thumbnail).
+        val crop = remember(face.id) { FaceIndexer.store(context).cropFile(face.id).takeIf { it.exists() } }
+        AsyncImage(
+            model = remember(face.id) {
+                ImageRequest.Builder(context)
+                    .data(crop ?: ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, face.mediaId))
+                    .size(256).build()
+            },
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = modifier.size(size).clip(CircleShape).background(colors.background(6.dp))
+        )
         return
     }
     val painter = rememberAsyncImagePainter(
@@ -193,6 +211,12 @@ private fun ScanStatus(modifier: Modifier = Modifier) {
                     if (status.msPerPhoto > 0) " · ${status.msPerPhoto} ms/photo" else "",
             style = AppTheme.typography.body2, color = colors.onBackground.copy(alpha = 0.7f)
         )
+        if (status.videos && status.videoTotal > 0)
+            Label(
+                "Videos: ${"%,d".format(status.videoScanned)} / ${"%,d".format(status.videoTotal)}" +
+                        if (status.msPerVideo > 0) " · ${"%.1f".format(status.msPerVideo / 1000f)} s/video" else "",
+                style = AppTheme.typography.body2, color = colors.onBackground.copy(alpha = 0.7f)
+            )
         status.error?.let { Label(it, style = AppTheme.typography.body2, color = Color(0xFFFF6B6B), maxLines = 3) }
         if (open) {
             status.current?.let {
@@ -202,9 +226,19 @@ private fun ScanStatus(modifier: Modifier = Modifier) {
                 "Runs on the phone only, while Gallery M is open (or still in memory). Experimental.",
                 style = AppTheme.typography.label3, color = colors.onBackground.copy(alpha = 0.6f)
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Label(
+                "Videos up to 5 minutes are scanned after all photos (a frame every 2.5 s; screen recordings skipped).",
+                style = AppTheme.typography.label3, color = colors.onBackground.copy(alpha = 0.6f)
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState())
+            ) {
                 SmallPill(if (status.paused) "Resume" else "Pause", primary = true) {
                     FaceIndexer.setPaused(context, !status.paused)
+                }
+                SmallPill(if (status.videos) "Videos: on" else "Scan videos too", primary = status.videos) {
+                    FaceIndexer.setScanVideos(context, !status.videos)
                 }
                 SmallPill("Re-group") { FaceIndexer.regroup(context) }
                 SmallPill("Rescan all") { FaceIndexer.reset(context) }
@@ -505,9 +539,15 @@ fun PersonScreen(id: Long) {
             items(files, key = { it.id }) { file ->
                 val media = file.id
                 val isSelected = media in selected
+                Box {
+                if (!file.isImage)
+                    Icon(
+                        androidx.compose.material.icons.Icons.Filled.PlayCircle, null, tint = Color.White,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(5.dp).size(18.dp).zIndexTop()
+                    )
                 AsyncImage(
                     model = remember(media) {
-                        ImageRequest.Builder(context).data(imageUri(media))
+                        ImageRequest.Builder(context).data(file.mediaUri)
                             .memoryCacheKey(thumbnailCacheKey(media)).size(320).build()
                     },
                     contentDescription = null,
@@ -529,6 +569,7 @@ fun PersonScreen(id: Long) {
                             if (isSelected) Modifier.border(3.dp, colors.accent).padding(3.dp) else Modifier
                         )
                 )
+                }
             }
             item(span = { GridItemSpan(maxLineSpan) }, key = "s_$label", contentType = "spacer") {
                 Spacer(Modifier.height(6.dp))
@@ -682,3 +723,7 @@ private fun PersonPicker(
         }
     }
 }
+
+
+/** Draw above the photo underneath (the play badge sits before the image in the Box). */
+private fun Modifier.zIndexTop() = this.then(androidx.compose.ui.Modifier.zIndex(1f))

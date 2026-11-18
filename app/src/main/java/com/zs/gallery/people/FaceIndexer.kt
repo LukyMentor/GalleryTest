@@ -46,6 +46,11 @@ object FaceIndexer {
         val current: String? = null,
         val error: String? = null,
         val note: String? = null,
+        /** Videos (up to [MAX_VIDEO_MS]): scanned after the photos, when switched on. */
+        val videos: Boolean = false,
+        val videoTotal: Int = 0,
+        val videoScanned: Int = 0,
+        val msPerVideo: Int = 0,
     )
 
     /** Face must look at least this similar to a group's average to join it. */
@@ -57,6 +62,15 @@ object FaceIndexer {
     private const val MIN_FACE_PX = 36f
     private const val MIN_SCORE = 0.6f
     private const val MAX_FACES = 12
+    const val MAX_VIDEO_MS = 5 * 60_000L
+    /** One frame every this many ms, at most [MAX_FRAMES] per video. */
+    private const val FRAME_STEP_MS = 2500L
+    private const val MAX_FRAMES = 30
+    /** Video frames are blurrier: stricter detection. */
+    private const val VIDEO_MIN_SCORE = 0.7f
+    private const val VIDEO_MIN_FACE_PX = 48f
+    /** Same person within one video. */
+    private const val SAME_IN_VIDEO = 0.5f
 
     private val _status = MutableStateFlow(Status())
     val status: StateFlow<Status> = _status.asStateFlow()
@@ -85,6 +99,14 @@ object FaceIndexer {
 
     fun isPaused(context: Context) = prefs(context).getBoolean("paused", false)
 
+    fun scansVideos(context: Context) = prefs(context).getBoolean("videos", false)
+
+    fun setScanVideos(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean("videos", on).apply()
+        _status.update { it.copy(videos = on) }
+        if (on) start(context)
+    }
+
     fun setPaused(context: Context, paused: Boolean) {
         prefs(context).edit().putBoolean("paused", paused).apply()
         _status.update { it.copy(paused = paused) }
@@ -98,7 +120,7 @@ object FaceIndexer {
     fun start(context: Context) {
         val app = context.applicationContext
         val paused = isPaused(app)
-        _status.update { it.copy(paused = paused) }
+        _status.update { it.copy(paused = paused, videos = scansVideos(app)) }
         if (paused || job?.isActive == true) return
         if (!hasPermission(app)) {
             _status.update { it.copy(error = "No access to photos yet") }
@@ -180,12 +202,39 @@ object FaceIndexer {
         return list
     }
 
+    private fun listVideos(context: Context): List<Photo> {
+        val projection = arrayOf(
+            MediaStore.Video.Media._ID,
+            MediaStore.Video.Media.DATE_MODIFIED,
+            MediaStore.Video.Media.RELATIVE_PATH,
+            MediaStore.Video.Media.DURATION,
+            MediaStore.Video.Media.DISPLAY_NAME,
+        )
+        val list = ArrayList<Photo>()
+        context.contentResolver.query(
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI, projection, null, null,
+            "${MediaStore.Video.Media.DATE_TAKEN} DESC"
+        )?.use { c ->
+            while (c.moveToNext()) {
+                val path = c.getString(2).orEmpty()
+                // Screen recordings aren't worth scanning.
+                if (path.contains("Screen", ignoreCase = true) && path.contains("record", ignoreCase = true)) continue
+                val duration = c.getLong(3)
+                if (duration <= 0 || duration > MAX_VIDEO_MS) continue
+                list += Photo(c.getLong(0), c.getLong(1), c.getString(4).orEmpty())
+            }
+        }
+        return list
+    }
+
     private suspend fun run(context: Context) {
         val store = store(context)
         val photos = listPhotos(context)
+        val videos = if (scansVideos(context)) listVideos(context) else emptyList()
         val known = store.scanned()
-        val existing = photos.mapTo(HashSet()) { it.id }
-        store.removeMedia(known.keys.filter { it !in existing })
+        val existing = photos.mapTo(HashSet()) { it.id }.apply { videos.forEach { add(it.id) } }
+        // Forget removed photos (and videos, but only while video scanning is on).
+        store.removeMedia(known.keys.filter { it !in existing && (videos.isNotEmpty() || !store.isVideo(it)) })
         val todo = photos.filter { known[it.id] != it.modified }
         _status.update {
             it.copy(
@@ -193,8 +242,11 @@ object FaceIndexer {
                 faces = store.faceCount(), note = if (todo.isEmpty()) "Up to date" else "Scanning"
             )
         }
-        if (todo.isEmpty()) {
+        val videoTodo = videos.filter { known[it.id] != it.modified }
+        _status.update { it.copy(videoTotal = videos.size, videoScanned = videos.size - videoTodo.size) }
+        if (todo.isEmpty() && videoTodo.isEmpty()) {
             group(store)
+            store.dropOrphanCrops()
             return
         }
         val engine = FaceEngine(context)
@@ -231,10 +283,115 @@ object FaceIndexer {
                 }
             }
             group(store)
+            // Then the videos (only once every photo is done).
+            var vTime = 0L
+            var vDone = 0
+            for (video in videoTodo) {
+                coroutineContext.ensureActive()
+                kotlinx.coroutines.yield()
+                val start = SystemClock.elapsedRealtime()
+                _status.update { it.copy(current = video.name, note = "Scanning videos") }
+                val faces = runCatching { processVideo(context, engine, video.id) }.getOrDefault(emptyList())
+                val ids = store.saveScan(video.id, video.modified, faces.map { it.first }, kind = 1)
+                ids.forEachIndexed { i, id -> runCatching { store.saveCrop(id, faces[i].second) } }
+                faces.forEach { it.second.recycle() }
+                vDone++
+                vTime += SystemClock.elapsedRealtime() - start
+                _status.update {
+                    it.copy(videoScanned = it.videoScanned + 1, faces = it.faces + faces.size,
+                        msPerVideo = (vTime / vDone).toInt())
+                }
+                pending += faces.size
+                if (pending >= 20) {
+                    group(store, merge = false)
+                    pending = 0
+                }
+            }
+            group(store)
+            store.dropOrphanCrops()
             _status.update { it.copy(note = "Up to date") }
         } finally {
             engine.close()
         }
+    }
+
+    /**
+     * Faces in a video: a frame every [FRAME_STEP_MS] (at most [MAX_FRAMES]); the same person's
+     * faces across frames become one entry (average embedding, best frame's crop).
+     */
+    private fun processVideo(context: Context, engine: FaceEngine, id: Long): List<Pair<Pair<RectF, Pair<Float, FloatArray>>, Bitmap>> {
+        val uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+        val retriever = android.media.MediaMetadataRetriever()
+        class Seen(val box: RectF, val score: Float, val embedding: FloatArray, val crop: Bitmap, val quality: Float)
+        val seen = ArrayList<Seen>()
+        try {
+            retriever.setDataSource(context, uri)
+            val duration = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull() ?: return emptyList()
+            val count = (duration / FRAME_STEP_MS).toInt().coerceIn(1, MAX_FRAMES)
+            for (i in 0 until count) {
+                val t = (duration * (i + 0.5f) / count).toLong()
+                val raw = retriever.getScaledFrameAtTime(
+                    t * 1000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC, DECODE, DECODE
+                ) ?: continue
+                val frame = if (raw.config == Bitmap.Config.ARGB_8888) raw
+                else raw.copy(Bitmap.Config.ARGB_8888, false).also { raw.recycle() }
+                try {
+                    val w = frame.width.toFloat()
+                    val h = frame.height.toFloat()
+                    for (face in engine.detect(frame).take(MAX_FACES)) {
+                        if (face.score < VIDEO_MIN_SCORE || min(face.box.width(), face.box.height()) < VIDEO_MIN_FACE_PX) continue
+                        val e = engine.embed(frame, face.landmarks)
+                        val box = RectF(
+                            (face.box.left / w).coerceIn(0f, 1f), (face.box.top / h).coerceIn(0f, 1f),
+                            (face.box.right / w).coerceIn(0f, 1f), (face.box.bottom / h).coerceIn(0f, 1f)
+                        )
+                        seen += Seen(box, face.score, e, crop(frame, face.box), face.score * face.box.width() * face.box.height())
+                    }
+                } finally {
+                    frame.recycle()
+                }
+            }
+        } finally {
+            runCatching { retriever.release() }
+        }
+        // Group the faces of the same person within this video.
+        val groups = ArrayList<MutableList<Seen>>()
+        for (s in seen) {
+            val g = groups.firstOrNull { grp -> FaceEngine.similarity(grp.first().embedding, s.embedding) >= SAME_IN_VIDEO }
+            if (g != null) g += s else groups += mutableListOf(s)
+        }
+        // Someone seen in a single frame of a longer video is usually a passer-by / misdetection.
+        val minFrames = if (seen.size <= 3) 1 else 2
+        val result = ArrayList<Pair<Pair<RectF, Pair<Float, FloatArray>>, Bitmap>>()
+        for (g in groups) {
+            if (g.size < minFrames) continue
+            val best = g.maxBy { it.quality }
+            val mean = FloatArray(best.embedding.size)
+            for (s in g) for (i in mean.indices) mean[i] += s.embedding[i]
+            var n = 0f
+            for (v in mean) n += v * v
+            n = sqrt(n).coerceAtLeast(1e-6f)
+            for (i in mean.indices) mean[i] /= n
+            result += (best.box to (best.score to mean)) to best.crop
+        }
+        for (s in seen) if (result.none { it.second === s.crop }) s.crop.recycle()
+        return result.take(MAX_FACES)
+    }
+
+    /** Square picture around a face (for the person bubbles of video faces). */
+    private fun crop(frame: Bitmap, box: RectF): Bitmap {
+        val side = (max(box.width(), box.height()) * 1.5f).coerceAtMost(min(frame.width, frame.height).toFloat())
+        val left = (box.centerX() - side / 2).coerceIn(0f, frame.width - side)
+        val top = (box.centerY() - side / 2).coerceIn(0f, frame.height - side)
+        val out = Bitmap.createBitmap(192, 192, Bitmap.Config.ARGB_8888)
+        android.graphics.Canvas(out).drawBitmap(
+            frame,
+            android.graphics.Rect(left.toInt(), top.toInt(), (left + side).toInt(), (top + side).toInt()),
+            android.graphics.Rect(0, 0, 192, 192),
+            android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
+        )
+        return out
     }
 
     /** Finds the faces in one photo: (box in 0..1, (score, embedding)). */
