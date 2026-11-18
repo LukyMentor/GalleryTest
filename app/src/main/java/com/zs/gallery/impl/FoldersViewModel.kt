@@ -65,6 +65,15 @@ class FoldersViewModel(provider: MediaProvider) : KoinViewModel(), FoldersViewSt
         preferences.observe(Settings.KEY_HIDDEN_FOLDERS)
             .stateIn(viewModelScope, SharingStarted.Eagerly, preferences[Settings.KEY_HIDDEN_FOLDERS])
 
+    override val pinned: StateFlow<Set<String>> =
+        preferences.observe(Settings.KEY_PINNED_FOLDERS)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, preferences[Settings.KEY_PINNED_FOLDERS])
+
+    override fun togglePinned(path: String) {
+        val current = preferences[Settings.KEY_PINNED_FOLDERS]
+        preferences[Settings.KEY_PINNED_FOLDERS] = if (path in current) current - path else current + path
+    }
+
     override fun toggleHidden(path: String) {
         val current = preferences[Settings.KEY_HIDDEN_FOLDERS]
         val hiding = path !in current
@@ -106,9 +115,13 @@ class FoldersViewModel(provider: MediaProvider) : KoinViewModel(), FoldersViewSt
 
     override val data = combine(
         snapshotFlow(::filter).debounceAfterFirst(300L),
-        provider.observer(MediaProvider.EXTERNAL_CONTENT_URI).debounceAfterFirst(300L)
-    ) { (ascending, order), _ ->
-        val folders = provider.fetchFolders(ascending = false)
+        provider.observer(MediaProvider.EXTERNAL_CONTENT_URI).debounceAfterFirst(300L),
+        preferences.observe(Settings.KEY_PINNED_FOLDERS)
+    ) { (ascending, order), _, pins ->
+        val all = provider.fetchFolders(ascending = false)
+        // Pinned folders get their own section at the top (by name); the rest as chosen.
+        val pinnedFolders = all.filter { it.path in pins }.sortedBy { it.name.lowercase() }
+        val folders = all.filter { it.path !in pins }
         val result = when (order) {
             ORDER_BY_NONE -> folders.groupBy { "" }
             ORDER_BY_NAME -> folders.sortedBy { it.firstTitleChar }
@@ -120,8 +133,13 @@ class FoldersViewModel(provider: MediaProvider) : KoinViewModel(), FoldersViewSt
 
             else -> error("Oops invalid id passed $order")
         }
+        val withPins = if (pinnedFolders.isEmpty()) result
+        else LinkedHashMap<Any, List<Folder>>().apply {
+            put("Pinned", pinnedFolders)
+            for ((k, v) in result) put(k, v)
+        }
         // This should be safe
-        castTo(result) as Mapped<Folder>
+        castTo(withPins) as Mapped<Folder>
     }
         // Catch any exceptions in upstream flow and emit using the snackbar.
         .catch { exception ->

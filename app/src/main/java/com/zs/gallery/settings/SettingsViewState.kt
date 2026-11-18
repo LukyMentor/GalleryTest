@@ -215,6 +215,10 @@ object Settings {
     /** Folders (absolute paths) whose photos are not shown in the Photos tab. */
     val KEY_HIDDEN_FOLDERS =
         stringSetPreferenceKey("${PREFIX}_hidden_folders", emptySet())
+
+        /** Folders pinned to the top of the Folders tab. */
+        val KEY_PINNED_FOLDERS =
+            stringSetPreferenceKey("${PREFIX}_pinned_folders", emptySet())
     val KEY_SECURE_MODE =
         booleanPreferenceKey(PREFIX + "_secure_gallery", defaultValue = false)
     val KEY_LAUNCH_COUNTER =

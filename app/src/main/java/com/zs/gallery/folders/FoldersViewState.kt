@@ -53,6 +53,11 @@ interface FoldersViewState {
      */
     fun filter(ascending: Boolean = this.filter.first, order: Action = this.filter.second)
 
+    /** Folders (paths) pinned to the top. */
+    val pinned: StateFlow<Set<String>>
+
+    fun togglePinned(path: String)
+
     /** Folders (paths) hidden from the Photos tab. */
     val hidden: StateFlow<Set<String>>
 

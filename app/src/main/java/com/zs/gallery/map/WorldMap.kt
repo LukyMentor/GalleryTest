@@ -183,13 +183,16 @@ fun WorldMap(
         val target = focus ?: return@LaunchedEffect
         if (viewport == IntSize.Zero) return@LaunchedEffect
         fitted = true
-        val z0 = zoom; val x0 = cx; val y0 = cy
+        // Start already above the spot (a few levels out) and glide in slowly - flying across
+        // the whole world was far too fast to follow.
         val z1 = 11f.coerceAtMost(MAX_ZOOM)
+        val z0 = (z1 - 3.5f).coerceAtLeast(minZoom())
+        zoom = z0; cx = target.x; cy = target.y
+        clampCamera()
         val t = androidx.compose.animation.core.Animatable(0f)
-        t.animateTo(1f, androidx.compose.animation.core.tween(700, easing = androidx.compose.animation.core.FastOutSlowInEasing)) {
+        t.animateTo(1f, androidx.compose.animation.core.tween(1500, easing = androidx.compose.animation.core.FastOutSlowInEasing)) {
             zoom = z0 + (z1 - z0) * value
-            cx = x0 + (target.x - x0) * value
-            cy = y0 + (target.y - y0) * value
+            cx = target.x; cy = target.y
             clampCamera()
         }
         onFocused()

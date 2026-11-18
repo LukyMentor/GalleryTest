@@ -126,9 +126,11 @@ fun MapScreen() {
             jump?.let { mercator(it.latitude, it.longitude).let { (x, y) -> androidx.compose.ui.geometry.Offset(x, y) } }
         }
         var spot by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
+        // Rings from the start of the glide, for a few seconds.
+        LaunchedEffect(focus) { if (focus != null) spot = focus }
         LaunchedEffect(spot) {
             if (spot == null) return@LaunchedEffect
-            kotlinx.coroutines.delay(4000)
+            kotlinx.coroutines.delay(5000)
             spot = null
         }
         WorldMap(
@@ -141,7 +143,6 @@ fun MapScreen() {
             highlight = spot,
             onFocused = {
                 val j = jump
-                spot = focus
                 MapJump.target = null
                 if (j != null) {
                     // That photo first, then others taken within ~1 km.

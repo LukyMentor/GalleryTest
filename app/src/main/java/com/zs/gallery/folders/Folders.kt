@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -172,6 +173,7 @@ fun Folders(viewState: FoldersViewState) {
         content = {
             val data by viewState.data.collectAsState()
             val hiddenFolders by viewState.hidden.collectAsState()
+            val pinnedFolders by viewState.pinned.collectAsState()
             val multiplier by preference(key = Settings.KEY_GRID_ITEM_SIZE_MULTIPLIER)
             val state = rememberLazyGridState()
             //
@@ -261,6 +263,7 @@ fun Folders(viewState: FoldersViewState) {
                             // Long-press: hide from / show in the Photos tab.
                             var menu by remember { mutableStateOf(false) }
                             val isHidden = folder.path in hiddenFolders
+                            val isPinned = folder.path in pinnedFolders
                             Box(Modifier.animateItem()) {
                                 Folder(
                                     value = folder,
@@ -281,7 +284,25 @@ fun Folders(viewState: FoldersViewState) {
                                             .padding(8.dp)
                                             .size(20.dp)
                                     )
+                                if (isPinned)
+                                    Icon(
+                                        Icons.Outlined.PushPin,
+                                        contentDescription = "Pinned",
+                                        tint = AppTheme.colors.accent,
+                                        modifier = Modifier
+                                            .align(Alignment.TopStart)
+                                            .padding(8.dp)
+                                            .size(20.dp)
+                                    )
                                 DropDownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                    DropDownMenuItem(
+                                        title = if (isPinned) "Unpin" else "Pin to top",
+                                        icon = Icons.Outlined.PushPin,
+                                        onClick = {
+                                            menu = false
+                                            viewState.togglePinned(folder.path)
+                                        }
+                                    )
                                     DropDownMenuItem(
                                         title = if (isHidden) "Show in Photos" else "Hide from Photos",
                                         icon = if (isHidden) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
