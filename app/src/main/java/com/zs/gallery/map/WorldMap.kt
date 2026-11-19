@@ -503,7 +503,9 @@ fun WorldMap(
             drawCircle(colors.city, dot, p)
             val at = Offset(box.left + 4f, box.top + 4f)
             drawText(layout, color = haloColor, topLeft = at, drawStyle = haloStroke)
-            drawText(layout, color = colors.city, topLeft = at)
+            // Explicitly filled: the text paint keeps the last stroke otherwise, and the name got
+            // drawn as a thick white outline over its own outline.
+            drawText(layout, color = colors.city, topLeft = at, drawStyle = androidx.compose.ui.graphics.drawscope.Fill)
         }
 
         // The photo's spot: two rings growing and fading, under the bubbles.
