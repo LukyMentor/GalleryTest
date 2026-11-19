@@ -10,6 +10,9 @@
 
 package com.zs.gallery.map
 
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.HideImage
 import androidx.compose.foundation.layout.navigationBars
 import android.Manifest
 import android.content.ContentUris
@@ -122,6 +125,8 @@ fun MapScreen() {
     Box(Modifier.fillMaxSize()) {
         // Offline map bundled in the app: no internet, no API key.
         val viewBounds = remember { FloatArray(4) }
+        // Top-right button: photos on / off (just the map).
+        var showPhotos by rememberSaveable { mutableStateOf(true) }
         // Coming from a photo's "Location": fly there, mark the spot, show that place's photos.
         val jump = MapJump.target
         val focus = remember(jump) {
@@ -142,6 +147,7 @@ fun MapScreen() {
             onClusterTap = { cluster -> selectedIds = cluster.photos.map { it.id }.toLongArray() },
             modifier = Modifier.fillMaxSize(),
             boundsOut = viewBounds,
+            showPhotos = showPhotos,
             focus = focus,
             highlight = spot,
             onFocused = {
@@ -183,6 +189,26 @@ fun MapScreen() {
             }
         }
 
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(12.dp)
+                .size(46.dp)
+                .shadow(6.dp, CircleShape)
+                .clip(CircleShape)
+                .background(if (showPhotos) colors.background(2.dp) else colors.accent)
+                .clickable { showPhotos = !showPhotos }
+        ) {
+            Icon(
+                if (showPhotos) Icons.Outlined.HideImage else Icons.Outlined.Image,
+                contentDescription = if (showPhotos) "Hide photos" else "Show photos",
+                tint = if (showPhotos) colors.onBackground else colors.onAccent,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+
         // Permission explanation if it was refused.
         if (!granted) {
             Column(
@@ -221,7 +247,7 @@ fun MapScreen() {
             }
         }
         // "Photos in this area": everything visible on the map now, in the full grid.
-        if (cluster == null && photos.isNotEmpty())
+        if (cluster == null && photos.isNotEmpty() && showPhotos)
             Box(
                 Modifier
                     .align(Alignment.BottomCenter)

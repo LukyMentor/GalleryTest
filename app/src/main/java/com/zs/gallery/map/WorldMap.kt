@@ -112,15 +112,15 @@ private class MapColors(
 private val LightMap = MapColors(
     water = Color(0xFF9CC6F2), land = Color(0xFFE4EEDB), border = Color(0x5A4A6B55),
     coast = Color(0xFF8DB8E8), city = Color(0xFF34343C), cityHalo = Color(0xE6E4EEDB),
-    river = Color(0xFF9CC6F2), motorway = Color(0xFFF4C75C), mainRoad = Color(0xFFFFFFFF),
-    road = Color(0xE6FFFFFF),
+    river = Color(0xFF8FBCEB), motorway = Color(0xFFF2C766), mainRoad = Color(0xF2FFFFFF),
+    road = Color(0xB3FFFFFF),
 )
 // Dark: deep blue water, teal-green land, light blue-grey roads (like the iPhone's dark map).
 private val DarkMap = MapColors(
     water = Color(0xFF1C2A80), land = Color(0xFF2B6650), border = Color(0x59FFFFFF),
-    coast = Color(0xFF243A8C), city = Color(0xFFF2F4F8), cityHalo = Color(0xE61E4A3A),
-    river = Color(0xFF3550C8), motorway = Color(0xFFA9BCE6), mainRoad = Color(0xFF8EA2CF),
-    road = Color(0xB38EA2CF),
+    coast = Color(0xFF243A8C), city = Color(0xFFF2F4F8), cityHalo = Color(0xE6173B2E),
+    river = Color(0xB32C45B8), motorway = Color(0x99B4C5EC), mainRoad = Color(0x668EA2CF),
+    road = Color(0x4D8EA2CF),
 )
 
 /**
@@ -141,6 +141,8 @@ fun WorldMap(
     highlight: Offset? = null,
     /** Receives the visible area (left, top, right, bottom in map units) on every frame. */
     boundsOut: FloatArray? = null,
+    /** False: just the map, no photo bubbles. */
+    showPhotos: Boolean = true,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -256,9 +258,11 @@ fun WorldMap(
     }
 
     val textMeasurer = rememberTextMeasurer(cacheSize = 512)
-    val cityStyle = TextStyle(
-        fontSize = 11.sp, color = colors.city, fontWeight = FontWeight.Medium,
-        shadow = androidx.compose.ui.graphics.Shadow(colors.cityHalo, blurRadius = 4f)
+    val cityStyle = TextStyle(fontSize = 12.sp, color = colors.city, fontWeight = FontWeight.Medium)
+    // Outline drawn under each city name, so it stays readable over roads and rivers.
+    val cityHaloStyle = cityStyle.copy(
+        color = colors.cityHalo.copy(alpha = 1f),
+        drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(width = with(density) { 3.dp.toPx() }, join = androidx.compose.ui.graphics.StrokeJoin.Round)
     )
     val countryStyle = TextStyle(
         fontSize = 12.sp,
@@ -278,6 +282,7 @@ fun WorldMap(
     }
 
     fun clusterAt(p: Offset): PhotoCluster? {
+        if (!showPhotos) return null
         val r = bubblePx / 2 + with(density) { 6.dp.toPx() }
         return clustersNow()
             .map { it to (toScreen(it.x, it.y) - p).getDistance() }
@@ -413,13 +418,22 @@ fun WorldMap(
                 drawPath(data.lakes.path, colors.water)
             // Rivers and roads (each kind from the zoom it belongs to), ~constant width on screen.
             val px = 1f / w
+            // Each kind only from a zoom where it helps (all roads at country level made a
+            // spider web), and thinner when further out.
+            val grow = ((zoom - 5f) / 5f).coerceIn(0f, 1f)
             for (g in data.lines) {
-                if (g.minZoom > zoom + 0.5f || !g.intersects(left, top, right, bottom)) continue
+                val from = when (g.kind) {
+                    3 -> 5f        // rivers
+                    0 -> 5.5f      // motorways
+                    1 -> 7f        // main roads
+                    else -> 8.5f   // other roads
+                }
+                if (zoom < from || g.minZoom > zoom + 0.5f || !g.intersects(left, top, right, bottom)) continue
                 val (color, width) = when (g.kind) {
-                    3 -> colors.river to 1.3f
-                    0 -> colors.motorway to 2.4f
-                    1 -> colors.mainRoad to 1.6f
-                    else -> colors.road to 1.0f
+                    3 -> colors.river to (0.8f + 0.6f * grow)
+                    0 -> colors.motorway to (1.2f + 1.4f * grow)
+                    1 -> colors.mainRoad to (0.9f + 0.9f * grow)
+                    else -> colors.road to (0.7f + 0.5f * grow)
                 }
                 drawPath(
                     g.path, color,
@@ -463,9 +477,16 @@ fun WorldMap(
         }
         var labels = 0
         val dot = 2.5.dp.toPx()
+        // Fewer names the further out (only the biggest places), more when zoomed in.
+        val maxLabels = when {
+            zoom < 4f -> 12
+            zoom < 6f -> 22
+            zoom < 8f -> 34
+            else -> 50
+        }
         for (city in data.cities) {
-            if (labels >= 70) break
-            if (city.minZoom > zoom + 1.5f) continue
+            if (labels >= maxLabels) break
+            if (city.minZoom > zoom + 0.5f) continue
             if (city.x < left || city.x > right || city.y < top || city.y > bottom) continue
             val p = Offset((city.x - left) * w, (city.y - top) * w)
             val layout = textMeasurer.measure(city.name, cityStyle)
@@ -476,7 +497,9 @@ fun WorldMap(
             if (placed.any { it.overlaps(box) }) continue
             placed += box
             labels++
+            drawCircle(colors.cityHalo.copy(alpha = 1f), dot + 1.5.dp.toPx(), p)
             drawCircle(colors.city, dot, p)
+            drawText(textMeasurer.measure(city.name, cityHaloStyle), topLeft = Offset(box.left + 4f, box.top + 4f))
             drawText(layout, topLeft = Offset(box.left + 4f, box.top + 4f))
         }
 
@@ -499,7 +522,7 @@ fun WorldMap(
         // Photo bubbles.
         val r = bubblePx / 2
         val ring = 2.5.dp.toPx()
-        for (cluster in clustersNow()) {
+        for (cluster in if (showPhotos) clustersNow() else emptyList()) {
             val c = Offset((cluster.x - left) * w, (cluster.y - top) * w)
             if (c.x < -r || c.y < -r || c.x > size.width + r || c.y > size.height + r) continue
             drawCircle(Color.Black.copy(alpha = 0.25f), r + ring, c + Offset(0f, 2.dp.toPx()))
