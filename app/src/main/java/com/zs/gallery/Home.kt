@@ -443,6 +443,16 @@ private val navGraphBuilder: NavGraphBuilder.() -> Unit = {
 
     // Viewer
     composable(RouteViewer) {
+        // Picking for another app: opening a photo picks (or selects) it instead.
+        if (com.zs.gallery.picker.PickMode.active) {
+            val nav = LocalNavController.current
+            val id = it.arguments?.getString("param_focused")?.toLongOrNull()
+            LaunchedEffect(Unit) {
+                nav.popBackStack()
+                if (id != null) com.zs.gallery.picker.PickMode.onOpen(id)
+            }
+            return@composable
+        }
         val state = koinViewModel<MediaViewerViewModel>()
         MediaViewer(viewState = state)
     }
@@ -790,6 +800,8 @@ fun Home(
                         com.zs.gallery.common.FolderPickerHost()
                         // "Add to person" sheet (People).
                         com.zs.gallery.people.AddToPersonHost()
+                        // Picking for another app: what's being chosen, Cancel / Add.
+                        com.zs.gallery.picker.PickBar()
                     }
                 }
             )

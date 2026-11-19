@@ -147,7 +147,7 @@ private inline fun <S, O> Preferences.observeAsState(key: Key<S, O>): State<O?> 
  * @property timeAppWentToBackground The time in mills until the app was in background state. default value -1L
  * @property isAuthenticationRequired A boolean flag indicating whether authentication is required.
  */
-class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
+open class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
 
     private val snackbarHostState: SnackbarHostState by inject()
     private val preferences: Preferences by inject()

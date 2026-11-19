@@ -204,7 +204,7 @@ fun Files(viewState: FilesViewState) {
             // Same big round buttons as the photo viewer: count, like, delete, share, "⋮".
             // While the bar fades away after the selection is cleared, keep showing what it showed
             // (the count and the selection buttons), not the "nothing selected" ones.
-            val selecting = viewState.isInSelectionMode
+            val selecting = viewState.isInSelectionMode && !com.zs.gallery.picker.PickMode.active
             var shownActions by remember { mutableStateOf(actions) }
             var shownCount by remember { mutableIntStateOf(0) }
             if (selecting) {

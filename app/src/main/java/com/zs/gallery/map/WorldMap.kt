@@ -110,14 +110,14 @@ private class MapColors(
 
 // iPhone-Maps-like: soft green land, blue water, pinkish borders, white / yellow roads.
 private val LightMap = MapColors(
-    water = Color(0xFF9CC6F2), land = Color(0xFFE4EEDB), border = Color(0xFFC285A8),
+    water = Color(0xFF9CC6F2), land = Color(0xFFE4EEDB), border = Color(0x5A4A6B55),
     coast = Color(0xFF8DB8E8), city = Color(0xFF34343C), cityHalo = Color(0xE6E4EEDB),
     river = Color(0xFF9CC6F2), motorway = Color(0xFFF4C75C), mainRoad = Color(0xFFFFFFFF),
     road = Color(0xE6FFFFFF),
 )
 // Dark: deep blue water, teal-green land, light blue-grey roads (like the iPhone's dark map).
 private val DarkMap = MapColors(
-    water = Color(0xFF1C2A80), land = Color(0xFF2B6650), border = Color(0xFFC96787),
+    water = Color(0xFF1C2A80), land = Color(0xFF2B6650), border = Color(0x59FFFFFF),
     coast = Color(0xFF243A8C), city = Color(0xFFF2F4F8), cityHalo = Color(0xE61E4A3A),
     river = Color(0xFF3550C8), motorway = Color(0xFFA9BCE6), mainRoad = Color(0xFF8EA2CF),
     road = Color(0xB38EA2CF),
@@ -431,7 +431,13 @@ fun WorldMap(
                 )
             }
             // Borders ~1 dp wide on screen at any zoom (the path is drawn in world units).
-            val border = Stroke(width = borderPx / w)
+            // Hairline when zoomed far out (thick outlines made the world view look busy).
+            val borderScale = when {
+                zoom < 2.5f -> 0.45f
+                zoom < 4.5f -> 0.7f
+                else -> 1f
+            }
+            val border = Stroke(width = borderPx * borderScale / w)
             for (country in data.countries) {
                 val shape = country.lods[lod]
                 if (!shape.intersects(left, top, right, bottom)) continue

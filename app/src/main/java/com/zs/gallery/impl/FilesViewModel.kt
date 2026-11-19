@@ -148,9 +148,18 @@ class FilesViewModel(
     override var data: Mapped<MediaFile>? by mutableStateOf(null)
 
     override val supportsFilters: Boolean = source != SOURCE_BIN
-    override val pickMode: Boolean = source == SOURCE_PICK
+    override val pickMode: Boolean = source == SOURCE_PICK ||
+            (com.zs.gallery.picker.PickMode.active && com.zs.gallery.picker.PickMode.multiple)
     override val isTimeline: Boolean = source == SOURCE_TIMELINE
-    override var filter: MediaFilter by mutableStateOf(MediaFilter.ALL)
+    // Picking only photos / only videos for another app: start on that filter.
+    override var filter: MediaFilter by mutableStateOf(
+        when {
+            !com.zs.gallery.picker.PickMode.active -> MediaFilter.ALL
+            com.zs.gallery.picker.PickMode.imagesOnly -> MediaFilter.PHOTOS
+            com.zs.gallery.picker.PickMode.videosOnly -> MediaFilter.VIDEOS
+            else -> MediaFilter.ALL
+        }
+    )
     override var order: MediaOrder by mutableStateOf(MediaOrder.NEWEST)
     override var groupedBySize: Boolean by mutableStateOf(false)
         private set
@@ -196,7 +205,11 @@ class FilesViewModel(
     // Represents the
     // Selection is kept in a hash set: membership checks are O(1), which matters for drag-select
     // (hundreds of items) and for every grid cell asking "am I selected?" on each frame.
-    private val selection = mutableStateSetOf<Long>()
+    // Picking several photos for another app: one selection shared by every screen.
+    private val selection =
+        if (com.zs.gallery.picker.PickMode.active && com.zs.gallery.picker.PickMode.multiple)
+            com.zs.gallery.picker.PickMode.selected
+        else mutableStateSetOf<Long>()
     override fun clear() = selection.clear()
     override val selected: List<Long> get() = selection.toList()
     override val selectedCount: Int get() = selection.size
