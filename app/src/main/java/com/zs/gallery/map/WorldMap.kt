@@ -259,10 +259,12 @@ fun WorldMap(
 
     val textMeasurer = rememberTextMeasurer(cacheSize = 512)
     val cityStyle = TextStyle(fontSize = 12.sp, color = colors.city, fontWeight = FontWeight.Medium)
-    // Outline drawn under each city name, so it stays readable over roads and rivers.
-    val cityHaloStyle = cityStyle.copy(
-        color = colors.cityHalo.copy(alpha = 1f),
-        drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(width = with(density) { 3.dp.toPx() }, join = androidx.compose.ui.graphics.StrokeJoin.Round)
+    // Outline drawn under each city name (in the map's dark/light tone), so it stays readable
+    // over roads and rivers. Colour and stroke are given when drawing - set in the TextStyle
+    // they were ignored and the outline came out in the text colour (white blobs).
+    val haloColor = colors.cityHalo.copy(alpha = 1f)
+    val haloStroke = androidx.compose.ui.graphics.drawscope.Stroke(
+        width = with(density) { 3.dp.toPx() }, join = androidx.compose.ui.graphics.StrokeJoin.Round
     )
     val countryStyle = TextStyle(
         fontSize = 12.sp,
@@ -499,8 +501,9 @@ fun WorldMap(
             labels++
             drawCircle(colors.cityHalo.copy(alpha = 1f), dot + 1.5.dp.toPx(), p)
             drawCircle(colors.city, dot, p)
-            drawText(textMeasurer.measure(city.name, cityHaloStyle), topLeft = Offset(box.left + 4f, box.top + 4f))
-            drawText(layout, topLeft = Offset(box.left + 4f, box.top + 4f))
+            val at = Offset(box.left + 4f, box.top + 4f)
+            drawText(layout, color = haloColor, topLeft = at, drawStyle = haloStroke)
+            drawText(layout, color = colors.city, topLeft = at)
         }
 
         // The photo's spot: two rings growing and fading, under the bubbles.
