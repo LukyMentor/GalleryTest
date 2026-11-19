@@ -411,13 +411,23 @@ fun WorldMap(
             translate(-left * w, -top * w)
             scale(w, w, pivot = Offset.Zero)
         }) {
-            for (country in data.countries) {
+            // Zoomed in: only the tiles on screen (whole countries made zooming in choppy).
+            val layer = if (lod > 0) data.tiles[lod] else null
+            fun cells(grid: Int, block: (Int) -> Unit) {
+                val x0 = (left * grid).toInt().coerceIn(0, grid - 1)
+                val x1 = (right * grid).toInt().coerceIn(0, grid - 1)
+                val y0 = (top * grid).toInt().coerceIn(0, grid - 1)
+                val y1 = (bottom * grid).toInt().coerceIn(0, grid - 1)
+                for (gy in y0..y1) for (gx in x0..x1) block(gy * grid + gx)
+            }
+            if (layer != null) {
+                cells(layer.grid) { i -> layer.land[i]?.let { drawPath(it, colors.land) } }
+                cells(WorldData.LAKE_GRID) { i -> data.lakeTiles[i]?.let { drawPath(it, colors.water) } }
+            } else for (country in data.countries) {
                 val shape = country.lods[lod]
                 if (!shape.intersects(left, top, right, bottom)) continue
                 drawPath(shape.path, colors.land)
             }
-            if (lod > 0 && data.lakes.intersects(left, top, right, bottom))
-                drawPath(data.lakes.path, colors.water)
             // Rivers and roads (each kind from the zoom it belongs to), ~constant width on screen.
             val px = 1f / w
             // Each kind only from a zoom where it helps (all roads at country level made a
@@ -454,7 +464,10 @@ fun WorldMap(
                 else -> 1f
             }
             val border = Stroke(width = borderPx * borderScale / w)
-            for (country in data.countries) {
+            if (layer != null) {
+                for (piece in layer.borders)
+                    if (piece.intersects(left, top, right, bottom)) drawPath(piece.path, colors.border, style = border)
+            } else for (country in data.countries) {
                 val shape = country.lods[lod]
                 if (!shape.intersects(left, top, right, bottom)) continue
                 drawPath(shape.path, colors.border, style = border)

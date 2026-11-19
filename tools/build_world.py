@@ -88,7 +88,7 @@ places = json.load(open(f'{SRC}/ne_10m_populated_places_simple.geojson'))['featu
 
 stats = [0, 0, 0]
 with open(OUT, 'wb') as f:
-    f.write(b'MGW5')
+    f.write(b'MGW6')
     f.write(struct.pack('<I', len(countries)))
     for c in countries:
         rings = list(rings_of(c['geometry']))
@@ -97,12 +97,13 @@ with open(OUT, 'wb') as f:
         fine = lod(rings, *FINE)
         stats[0] += sum(map(len, coarse)); stats[1] += sum(map(len, mid)); stats[2] += sum(map(len, fine))
         write_rings(f, coarse)
-        write_rings(f, mid)
-        write_rings(f, fine)
+        # Mid / fine detail are stored tiled further down (MGW6).
+        write_rings(f, [])
+        write_rings(f, [])
     lake_rings = []
     for l in lakes:
         lake_rings += lod(list(rings_of(l['geometry'])), *FINE)
-    write_rings(f, lake_rings)
+    write_rings(f, [])  # lakes are stored tiled (MGW6)
     cities = []
     for p in places:
         pr = p['properties']
@@ -166,4 +167,77 @@ with open(OUT, 'wb') as f:
             f.write(struct.pack('<2f', x, y))
         pts += len(sl)
     print('lines', len(out_lines), 'points', pts)
+    # MGW6: land, lakes and borders cut into tiles for the mid and fine detail levels, so zoomed
+    # in only the few tiles on screen are drawn (whole countries made zooming in choppy).
+    from shapely.geometry import Polygon, box
+    from shapely.validation import make_valid
+    def tiled(levels):
+        for lvl, (tol, min_area), grid in levels:
+            cells = {}
+            borders = []
+            def add_poly(geom):
+                gs = [geom] if geom.geom_type == 'Polygon' else list(getattr(geom, 'geoms', []))
+                for g in gs:
+                    if g.geom_type != 'Polygon' or g.is_empty: continue
+                    minx, miny, maxx, maxy = g.bounds
+                    for gx in range(max(0, int(minx * grid)), min(grid - 1, int(maxx * grid)) + 1):
+                        for gy in range(max(0, int(miny * grid)), min(grid - 1, int(maxy * grid)) + 1):
+                            cell = box(gx / grid, gy / grid, (gx + 1) / grid, (gy + 1) / grid)
+                            part = g.intersection(cell)
+                            if part.is_empty: continue
+                            parts = [part] if part.geom_type == 'Polygon' else [q for q in getattr(part, 'geoms', []) if q.geom_type == 'Polygon']
+                            for q in parts:
+                                rings = [list(q.exterior.coords)] + [list(r.coords) for r in q.interiors]
+                                cells.setdefault(gy * grid + gx, []).extend([r for r in rings if len(r) >= 4])
+            for c in countries:
+                for ring in lod(list(rings_of(c['geometry'])), tol, min_area):
+                    try:
+                        poly = make_valid(Polygon(ring))
+                    except Exception:
+                        continue
+                    add_poly(poly)
+                    # Border/coast outline in short pieces (only the visible ones get drawn).
+                    for i in range(0, len(ring) - 1, 96):
+                        piece = ring[i:i + 97]
+                        if len(piece) >= 2: borders.append(piece)
+            yield lvl, grid, cells, borders
+    def write_tiles(lvl, grid, cells, borders):
+        f.write(struct.pack('<BHI', lvl, grid, len(cells)))
+        for idx, rings in cells.items():
+            write_rings_raw(idx, rings)
+        f.write(struct.pack('<I', len(borders)))
+        for piece in borders:
+            xs = [p[0] for p in piece]; ys = [p[1] for p in piece]
+            f.write(struct.pack('<4fI', min(xs), min(ys), max(xs), max(ys), len(piece)))
+            for x, y in piece: f.write(struct.pack('<2f', x, y))
+    def write_rings_raw(idx, rings):
+        f.write(struct.pack('<II', idx, len(rings)))
+        for r in rings:
+            f.write(struct.pack('<I', len(r)))
+            for x, y in r: f.write(struct.pack('<2f', x, y))
+    for lvl, grid, cells, borders in tiled([(1, MID, 16), (2, FINE, 64)]):
+        write_tiles(lvl, grid, cells, borders)
+        print('tiles lod', lvl, 'cells', len(cells), 'border pieces', len(borders))
+    # Lakes, tiled the same way (fine grid).
+    lake_cells = {}
+    for ring in lake_rings:
+        try:
+            g = make_valid(Polygon(ring))
+        except Exception:
+            continue
+        gs = [g] if g.geom_type == 'Polygon' else [q for q in getattr(g, 'geoms', []) if q.geom_type == 'Polygon']
+        for q in gs:
+            minx, miny, maxx, maxy = q.bounds
+            for gx in range(max(0, int(minx * 64)), min(63, int(maxx * 64)) + 1):
+                for gy in range(max(0, int(miny * 64)), min(63, int(maxy * 64)) + 1):
+                    part = q.intersection(box(gx / 64, gy / 64, (gx + 1) / 64, (gy + 1) / 64))
+                    parts = [part] if part.geom_type == 'Polygon' else [p for p in getattr(part, 'geoms', []) if p.geom_type == 'Polygon']
+                    for pp in parts:
+                        if pp.is_empty: continue
+                        rings = [list(pp.exterior.coords)] + [list(r.coords) for r in pp.interiors]
+                        lake_cells.setdefault(gy * 64 + gx, []).extend([r for r in rings if len(r) >= 4])
+    f.write(struct.pack('<I', len(lake_cells)))
+    for idx, rings in lake_cells.items():
+        write_rings_raw(idx, rings)
+    print('lake cells', len(lake_cells))
 print('points coarse/mid/fine', stats, 'lakes', len(lake_rings), 'cities', len(cities))
