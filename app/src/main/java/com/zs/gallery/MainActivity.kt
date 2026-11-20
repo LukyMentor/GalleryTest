@@ -174,6 +174,12 @@ open class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
      */
     private var timeAppWentToBackground = -1L
 
+    /** An "Edit with Gallery M" request that arrived while locked; opened right after unlocking. */
+    private var pendingEdit: Intent? = null
+
+    /** The fingerprint prompt is showing: its own PIN screen pausing us mustn't re-lock the app. */
+    private var authInProgress = false
+
     /**
      * Checks if authentication is required.
      *
@@ -212,7 +218,7 @@ open class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
         // The time when app went to background.
         // irrespective of what value it holds update it.
         Log.d(TAG, "onPause")
-        timeAppWentToBackground = System.currentTimeMillis()
+        if (!authInProgress) timeAppWentToBackground = System.currentTimeMillis()
     }
 
     @SuppressLint("NewApi")
@@ -236,6 +242,8 @@ open class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
             navController?.navigate(RouteLockScreen()) {
                 launchSingleTop = true
             }
+            // Ask for the fingerprint straight away instead of waiting for the button.
+            unlock()
         }
     }
 
@@ -260,6 +268,8 @@ open class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
         onAuthenticated: () -> Unit,
     ) {
         Log.d(TAG, "preparing to show authentication dialog.")
+        if (authInProgress) return
+        authInProgress = true
         // Build the BiometricPrompt
         val prompt = BiometricPrompt.Builder(this).apply {
             setTitle(getString(R.string.lock_scr_title))
@@ -291,6 +301,7 @@ open class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
             object : BiometricPrompt.AuthenticationCallback() {
                 // Implement callback methods for authentication events (success, error, etc.)
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
+                    authInProgress = false
                     onAuthenticated()
                 }
 
@@ -301,6 +312,15 @@ open class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
                     super.onAuthenticationError(errorCode, errString)
+                    authInProgress = false
+                    // Left the app while the prompt was up: count that as going to the background.
+                    if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+                        if (timeAppWentToBackground != -1L) timeAppWentToBackground = System.currentTimeMillis()
+                        return
+                    }
+                    // Cancelled by the user: no need for a toast about it.
+                    if (errorCode == BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED ||
+                        errorCode == BiometricPrompt.BIOMETRIC_ERROR_CANCELED) return
                     showToast(getString(R.string.msg_auth_error_s, errString))
                 }
             }
@@ -323,12 +343,14 @@ open class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
                     inclusive = true
                 }
             }
-            // return from here;
-            return@authenticate
+        } else {
+            Log.d(TAG, "unlock: poping lock_screen from graph")
+            // If the start destination is already RouteTimeline, just pop back
+            if (navController.currentDestination?.domain == RouteLockScreen.domain)
+                navController.popBackStack()
         }
-        Log.d(TAG, "unlock: poping lock_screen from graph")
-        // If the start destination is already RouteTimeline, just pop back
-        navController.popBackStack()
+        // Opened to edit something (screenshot pop-up): go there now, not to the grid.
+        pendingEdit?.let { pendingEdit = null; openCrop(it) }
     }
 
     override fun showSnackbar(
@@ -537,6 +559,7 @@ open class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
         if (intent.action == Intent.ACTION_EDIT) {
             setIntent(intent)
             if (!isAuthenticationRequired) openCrop(intent)
+            else pendingEdit = intent // onResume shows the lock; unlocking opens the editor
             return
         }
         if (intent.action != Intent.ACTION_VIEW)
@@ -596,8 +619,10 @@ open class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
             )
             // Opened via "Edit with Gallery M": crop it (not when the app lock is on).
             LaunchedEffect(Unit) {
-                if (isColdStart && intent.action == Intent.ACTION_EDIT && !isAuthenticationRequired)
-                    openCrop(intent)
+                if (isColdStart && intent.action == Intent.ACTION_EDIT) {
+                    if (!isAuthenticationRequired) openCrop(intent)
+                    else pendingEdit = intent
+                }
             }
             // Manage lifecycle-related events and listeners
             DisposableEffect(Unit) {
