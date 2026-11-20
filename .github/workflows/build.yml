@@ -61,6 +61,14 @@ jobs:
           name: MGallery-${{ github.run_number }}
           path: MGallery-${{ github.run_number }}.apk
 
+      - name: Retrace crash
+        if: github.ref != 'refs/heads/master'
+        run: |
+          M=app/build/outputs/mapping/communityRelease/mapping.txt
+          grep -m3 -i "map_id" $M || true
+          RT=$(ls $ANDROID_HOME/cmdline-tools/*/bin/retrace | head -n1)
+          $RT $M .github/crash/trace.txt
+
       - uses: actions/upload-artifact@v4
         with:
           name: mapping-${{ github.run_number }}
