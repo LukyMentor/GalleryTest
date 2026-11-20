@@ -1,0 +1,25 @@
+name: Retrace crash
+# Decodes .github/crash/trace.txt with the mapping kept by the given build run.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Actions run id of the build that crashed"
+        required: true
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  retrace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download ${{ inputs.run_id }} -R ${{ github.repository }} -p "mapping-*" -D map
+          M=$(find map -name mapping.txt | head -1)
+          grep -m1 -i "map_id" $M || true
+          RT=$(ls $ANDROID_HOME/cmdline-tools/*/bin/retrace | head -n1)
+          $RT $M .github/crash/trace.txt

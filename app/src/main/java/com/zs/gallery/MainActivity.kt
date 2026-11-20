@@ -575,7 +575,14 @@ open class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
         }
     }
 
+    @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Compose 1.13 beta's "cache window" prefetch crashes grids with headers while
+        // scrolling (asks for row -1). Use the older, proven prefetching instead.
+        runCatching {
+            androidx.compose.foundation.ComposeFoundationFlags.isPreferDefaultCacheWindowOverPrefetchStrategyLazyGrid = false
+            androidx.compose.foundation.ComposeFoundationFlags.isPreferDefaultCacheWindowOverPrefetchStrategyLazyList = false
+        }
         super.onCreate(savedInstanceState)
         Log.d(TAG, "onCreate")
         // This is determined by checking if savedInstanceState is null.
