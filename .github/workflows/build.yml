@@ -17,6 +17,7 @@ jobs:
           curl -sf $M/foundation/foundation/maven-metadata.xml | grep -o "<version>[^<]*" | tail -15
           curl -sfo s.jar $M/foundation/foundation/$V/foundation-$V-sources.jar || curl -sfo s.jar $M/foundation/foundation-android/$V/foundation-android-$V-sources.jar
           mkdir s && cd s && unzip -q ../s.jar
-          F=$(find . -name LazyGridSpanLayoutProvider.kt | head -1); cat -n $F | sed -n 60,200p
-          F=$(find . -name LazyGridMeasuredLineProvider.kt | head -1); cat -n $F
-          F=$(find . -path "*lazy/grid/LazyGrid.kt" | head -1); grep -n "keepAround" $F; cat -n $F | sed -n 480,620p
+          grep -rn "fun LazyGridPrefetchStrategy\|CacheWindow\|prefetchStrategy" --include=*.kt . | grep -i "grid/LazyGridState.kt\|grid/LazyGridPrefetchStrategy.kt\|ComposeFoundationFlags" | head -40
+          grep -rn "CacheWindow" --include=ComposeFoundationFlags.kt . | head
+          F=$(find . -name ComposeFoundationFlags.kt | head -1); grep -n "var \|val " $F | head -40
+          F=$(find . -path "*lazy/grid/LazyGridState.kt" | head -1); grep -n "rememberLazyGridState\|prefetchStrategy\|cacheWindow" $F | head -30
