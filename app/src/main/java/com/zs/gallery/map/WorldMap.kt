@@ -143,6 +143,14 @@ fun WorldMap(
     boundsOut: FloatArray? = null,
     /** False: just the map, no photo bubbles. */
     showPhotos: Boolean = true,
+    /** Photos shown as small dots (a folder's other days). */
+    dots: List<GeoPhoto> = emptyList(),
+    /** The trip line: photos in the order they were taken; [trailDay] is the chosen day's part. */
+    trail: List<GeoPhoto> = emptyList(),
+    trailDay: List<GeoPhoto> = emptyList(),
+    /** When this changes (and isn't null), the camera fits [fitPhotos]. */
+    fitKey: Any? = null,
+    fitPhotos: List<GeoPhoto> = emptyList(),
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -190,6 +198,30 @@ fun WorldMap(
         cy = (minY + maxY) / 2
         clampCamera()
     }
+
+    // A folder was chosen: show all of its photos.
+    LaunchedEffect(fitKey, viewport) {
+        if (fitKey == null || fitPhotos.isEmpty() || viewport == IntSize.Zero) return@LaunchedEffect
+        fitted = true
+        val pts = fitPhotos.map { mercator(it.latitude, it.longitude) }
+        val minX = pts.minOf { it.first }; val maxX = pts.maxOf { it.first }
+        val minY = pts.minOf { it.second }; val maxY = pts.maxOf { it.second }
+        val spanX = max(maxX - minX, 0.0005f) * 1.5f
+        val spanY = max(maxY - minY, 0.0005f) * 1.8f
+        val z1 = log2(min(viewport.width / (spanX * tilePx), viewport.height / (spanY * tilePx))).coerceAtMost(11f)
+        val z0 = zoom; val x0 = cx; val y0 = cy
+        val x1 = (minX + maxX) / 2; val y1 = (minY + maxY) / 2
+        val t = androidx.compose.animation.core.Animatable(0f)
+        t.animateTo(1f, androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.FastOutSlowInEasing)) {
+            zoom = z0 + (z1 - z0) * value
+            cx = x0 + (x1 - x0) * value
+            cy = y0 + (y1 - y0) * value
+            clampCamera()
+        }
+    }
+    val dotPoints = remember(dots) { dots.map { mercator(it.latitude, it.longitude) } }
+    val trailPoints = remember(trail) { trail.map { mercator(it.latitude, it.longitude) } }
+    val trailDayPoints = remember(trailDay) { trailDay.map { mercator(it.latitude, it.longitude) } }
 
     // Flying to a photo's place ("Location" in a photo's Properties).
     LaunchedEffect(focus, viewport) {
@@ -519,6 +551,33 @@ fun WorldMap(
             // Explicitly filled: the text paint keeps the last stroke otherwise, and the name got
             // drawn as a thick white outline over its own outline.
             drawText(layout, color = colors.city, topLeft = at, drawStyle = androidx.compose.ui.graphics.drawscope.Fill)
+        }
+
+        // Trip line (whole folder faint, the chosen day in the accent colour) and the other days'
+        // photos as small dots.
+        fun screenPath(pts: List<Pair<Float, Float>>): androidx.compose.ui.graphics.Path {
+            val path = androidx.compose.ui.graphics.Path()
+            pts.forEachIndexed { i, (x, y) ->
+                val sx = (x - left) * w; val sy = (y - top) * w
+                if (i == 0) path.moveTo(sx, sy) else path.lineTo(sx, sy)
+            }
+            return path
+        }
+        if (showPhotos && trailPoints.size >= 2)
+            drawPath(
+                screenPath(trailPoints), colors.city.copy(alpha = 0.45f),
+                style = Stroke(1.6.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
+            )
+        if (showPhotos && trailDayPoints.size >= 2)
+            drawPath(
+                screenPath(trailDayPoints), accent,
+                style = Stroke(3.5.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
+            )
+        if (showPhotos) for ((x, y) in dotPoints) {
+            val c = Offset((x - left) * w, (y - top) * w)
+            if (c.x < -10 || c.y < -10 || c.x > size.width + 10 || c.y > size.height + 10) continue
+            drawCircle(colors.cityHalo.copy(alpha = 1f), 5.dp.toPx(), c)
+            drawCircle(colors.city, 3.5.dp.toPx(), c)
         }
 
         // The photo's spot: two rings growing and fading, under the bubbles.

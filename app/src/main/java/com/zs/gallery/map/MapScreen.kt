@@ -10,6 +10,18 @@
 
 package com.zs.gallery.map
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxHeight
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.ArrowDropDown
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.HideImage
@@ -122,6 +134,25 @@ fun MapScreen() {
         if (list.isEmpty()) null else PhotoCluster(list, 0f, 0f)
     }
 
+    // Folder filter + day slider ("replay a trip").
+    val folderOf by produceState(emptyMap<Long, String>(), photos) {
+        value = withContext(Dispatchers.IO) { foldersOf(context, photos.map { it.id }) }
+    }
+    var folder by rememberSaveable { mutableStateOf<String?>(null) }
+    var dayIndex by rememberSaveable { mutableIntStateOf(-1) }   // -1 = every day
+    var pickingFolder by remember { mutableStateOf(false) }
+    val folderPhotos = remember(photos, folderOf, folder) {
+        val f = folder ?: return@remember photos
+        photos.filter { folderOf[it.id] == f }
+    }
+    val days = remember(folderPhotos, folder) {
+        if (folder == null) emptyList()
+        else folderPhotos.groupBy { dayOf(it.date) }.toSortedMap().values.map { list -> list.sortedBy { it.date } }
+    }
+    if (dayIndex >= days.size) dayIndex = -1
+    val dayPhotos = if (folder != null && dayIndex >= 0) days[dayIndex] else folderPhotos
+    val trail = remember(folderPhotos, folder) { if (folder == null) emptyList() else folderPhotos.sortedBy { it.date } }
+
     Box(Modifier.fillMaxSize()) {
         // Offline map bundled in the app: no internet, no API key.
         val viewBounds = remember { FloatArray(4) }
@@ -141,7 +172,12 @@ fun MapScreen() {
             spot = null
         }
         WorldMap(
-            photos = photos,
+            photos = dayPhotos,
+            dots = if (folder != null && dayIndex >= 0) folderPhotos.filter { dayOf(it.date) != dayOf(dayPhotos.first().date) } else emptyList(),
+            trail = trail,
+            trailDay = if (dayIndex >= 0) dayPhotos else emptyList(),
+            fitKey = folder,
+            fitPhotos = folderPhotos,
             dark = dark,
             accent = colors.accent,
             onClusterTap = { cluster -> selectedIds = cluster.photos.map { it.id }.toLongArray() },
@@ -187,6 +223,31 @@ fun MapScreen() {
                     fontWeight = FontWeight.Medium
                 )
             }
+            // Folder filter.
+            if (granted && photos.isNotEmpty())
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .shadow(6.dp, RoundedCornerShape(50))
+                        .clip(RoundedCornerShape(50))
+                        .background(if (folder != null) colors.accent else colors.background(2.dp))
+                        .clickable { pickingFolder = true }
+                        .padding(start = 14.dp, end = if (folder != null) 4.dp else 14.dp, top = 6.dp, bottom = 6.dp)
+                ) {
+                    val on = if (folder != null) colors.onAccent else colors.onBackground
+                    Icon(Icons.Outlined.Folder, null, tint = on, modifier = Modifier.size(18.dp))
+                    Label(
+                        folder?.substringAfterLast('/') ?: "All photos",
+                        color = on, fontWeight = FontWeight.Medium, maxLines = 1,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                    if (folder != null)
+                        IconButton(icon = Icons.Outlined.Close, contentDescription = "All photos",
+                            onClick = { folder = null; dayIndex = -1; selectedIds = null }, tint = on)
+                    else
+                        Icon(Icons.Outlined.ArrowDropDown, null, tint = on, modifier = Modifier.size(20.dp))
+                }
         }
 
         Box(
@@ -246,8 +307,19 @@ fun MapScreen() {
                     facade.style += com.zs.gallery.common.WindowStyle.FLAG_APP_NAV_BAR_VISIBILITY_AUTO
             }
         }
+        // The day slider for a chosen folder.
+        if (folder != null && cluster == null && days.isNotEmpty())
+            DaySlider(
+                days = days,
+                index = dayIndex,
+                onIndex = { dayIndex = it; selectedIds = null },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.content.union(WindowInsets.navigationBars).only(WindowInsetsSides.Bottom))
+                    .padding(horizontal = 12.dp, vertical = 12.dp)
+            )
         // "Photos in this area": everything visible on the map now, in the full grid.
-        if (cluster == null && photos.isNotEmpty() && showPhotos)
+        if (cluster == null && photos.isNotEmpty() && showPhotos && folder == null)
             Box(
                 Modifier
                     .align(Alignment.BottomCenter)
@@ -318,6 +390,18 @@ fun MapScreen() {
                 }
             )
         }
+        // Back: close the folder list, else leave the folder.
+        androidx.activity.compose.BackHandler(enabled = pickingFolder) { pickingFolder = false }
+        androidx.activity.compose.BackHandler(enabled = !pickingFolder && folder != null && !expanded && cluster == null) {
+            folder = null; dayIndex = -1
+        }
+        if (pickingFolder)
+            FolderPickerSheet(
+                photos = photos,
+                folderOf = folderOf,
+                onPick = { path -> folder = path; dayIndex = -1; selectedIds = null; pickingFolder = false },
+                onDismiss = { pickingFolder = false }
+            )
     }
 }
 
@@ -465,4 +549,215 @@ private fun distanceKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): 
             kotlin.math.cos(Math.toRadians(lat1)) * kotlin.math.cos(Math.toRadians(lat2)) *
             kotlin.math.sin(dLon / 2).let { it * it }
     return 2 * r * kotlin.math.asin(kotlin.math.sqrt(a))
+}
+
+
+/** Day number (local time) of a photo date in ms. */
+private fun dayOf(date: Long): Long {
+    val zone = java.util.TimeZone.getDefault()
+    return Math.floorDiv(date + zone.getOffset(date), android.text.format.DateUtils.DAY_IN_MILLIS)
+}
+
+/** id -> folder (absolute path) for the photos on the map. */
+private fun foldersOf(context: android.content.Context, ids: List<Long>): Map<Long, String> {
+    val map = HashMap<Long, String>()
+    for (chunk in ids.chunked(500)) {
+        context.contentResolver.query(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATA),
+            "${MediaStore.Images.Media._ID} IN (${chunk.joinToString(",")})", null, null
+        )?.use { c ->
+            while (c.moveToNext()) {
+                val path = c.getString(1) ?: continue
+                map[c.getLong(0)] = path.substringBeforeLast('/')
+            }
+        }
+    }
+    return map
+}
+
+/**
+ * Horizontal slider through the folder's days (only days with photos): a little bar chart of
+ * photos per day, drag or tap to pick one day; "All" shows every day.
+ */
+@Composable
+private fun DaySlider(
+    days: List<List<GeoPhoto>>,
+    index: Int,
+    onIndex: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AppTheme.colors
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val max = days.maxOf { it.size }.coerceAtLeast(1)
+    val current by androidx.compose.runtime.rememberUpdatedState(index)
+    Column(
+        modifier
+            .fillMaxWidth()
+            .shadow(8.dp, RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(22.dp))
+            .background(colors.background(3.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                if (index < 0) {
+                    Label("All days", fontWeight = FontWeight.SemiBold, color = colors.onBackground)
+                    Label(
+                        "${days.size} days · ${days.sumOf { it.size }} photos",
+                        style = AppTheme.typography.label3, color = colors.onBackground.copy(alpha = 0.65f)
+                    )
+                } else {
+                    val day = days[index]
+                    Label(
+                        "Day ${index + 1} · " + java.text.SimpleDateFormat("EEE d MMM yyyy", java.util.Locale.getDefault())
+                            .format(java.util.Date(day.first().date)),
+                        fontWeight = FontWeight.SemiBold, color = colors.onBackground
+                    )
+                    Label(
+                        if (day.size == 1) "1 photo" else "${day.size} photos",
+                        style = AppTheme.typography.label3, color = colors.onBackground.copy(alpha = 0.65f)
+                    )
+                }
+            }
+            com.zs.gallery.files.FilterChip("All", index < 0) { onIndex(-1) }
+        }
+        // Bars: one per day; the chosen one in the accent colour.
+        androidx.compose.foundation.Canvas(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .height(44.dp)
+                .pointerInput(days.size) {
+                    fun pick(x: Float) {
+                        val i = (x / size.width * days.size).toInt().coerceIn(0, days.size - 1)
+                        if (i != current) {
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                            onIndex(i)
+                        }
+                    }
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        pick(down.position.x)
+                        while (true) {
+                            val e = awaitPointerEvent()
+                            val ch = e.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!ch.pressed) break
+                            ch.consume()
+                            pick(ch.position.x)
+                        }
+                    }
+                }
+        ) {
+            val n = days.size
+            val slot = size.width / n
+            val gap = if (slot > 6.dp.toPx()) 2.dp.toPx() else 0f
+            for (i in 0 until n) {
+                val h = (size.height - 10.dp.toPx()) * (days[i].size.toFloat() / max).coerceAtLeast(0.08f)
+                val chosen = i == index
+                drawRoundRect(
+                    if (chosen) colors.accent else colors.onBackground.copy(alpha = if (index < 0) 0.45f else 0.25f),
+                    topLeft = Offset(i * slot + gap / 2, size.height - 6.dp.toPx() - h),
+                    size = androidx.compose.ui.geometry.Size((slot - gap).coerceAtLeast(1f), h),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx())
+                )
+            }
+            // Thumb under the chosen day.
+            if (index >= 0)
+                drawCircle(colors.accent, 3.dp.toPx(), Offset((index + 0.5f) * slot, size.height - 2.dp.toPx()))
+        }
+    }
+}
+
+/** Folders that have photos with a location, with a search field. */
+@Composable
+private fun FolderPickerSheet(
+    photos: List<GeoPhoto>,
+    folderOf: Map<Long, String>,
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = AppTheme.colors
+    val context = LocalContext.current
+    val folders = remember(photos, folderOf) {
+        photos.groupBy { folderOf[it.id] }.filterKeys { it != null }
+            .map { (path, list) -> Triple(path!!, list.size, list.maxBy { it.date }.id) }
+            .sortedByDescending { it.second }
+    }
+    var query by remember { mutableStateOf("") }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.5f))
+            .clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null, onClick = onDismiss)
+    ) {
+        Column(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .fillMaxHeight(0.8f)
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(colors.background(3.dp))
+                .clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null, onClick = {})
+                .windowInsetsPadding(WindowInsets.navigationBars)
+        ) {
+            Label("Show a folder", style = AppTheme.typography.title2, fontWeight = FontWeight.SemiBold,
+                color = colors.onBackground, modifier = Modifier.padding(start = 20.dp, top = 20.dp))
+            // Search.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(50))
+                    .background(colors.onBackground.copy(alpha = 0.08f))
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                Icon(Icons.Outlined.Search, null, tint = colors.onBackground.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
+                Box(Modifier.padding(start = 10.dp).weight(1f)) {
+                    if (query.isEmpty())
+                        Label("Search folders", color = colors.onBackground.copy(alpha = 0.5f))
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        singleLine = true,
+                        textStyle = AppTheme.typography.body1.copy(color = colors.onBackground),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(colors.accent),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+            val shown = folders.filter { query.isBlank() || it.first.substringAfterLast('/').contains(query.trim(), ignoreCase = true) }
+            androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize()) {
+                items(shown.size, key = { shown[it].first }) { i ->
+                    val (path, count, cover) = shown[i]
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onPick(path) }
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        AsyncImage(
+                            model = remember(cover) {
+                                ImageRequest.Builder(context)
+                                    .data(ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cover))
+                                    .memoryCacheKey(thumbnailCacheKey(cover)).size(160).build()
+                            },
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)).background(colors.background(6.dp))
+                        )
+                        Column(Modifier.padding(start = 14.dp)) {
+                            Label(path.substringAfterLast('/'), fontWeight = FontWeight.Medium, color = colors.onBackground, maxLines = 1)
+                            Label(
+                                if (count == 1) "1 photo with a location" else "$count photos with a location",
+                                style = AppTheme.typography.label3, color = colors.onBackground.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
