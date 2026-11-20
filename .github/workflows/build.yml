@@ -61,7 +61,14 @@ jobs:
           name: MGallery-${{ github.run_number }}
           path: MGallery-${{ github.run_number }}.apk
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mapping-${{ github.run_number }}
+          path: app/build/outputs/mapping/communityRelease/mapping.txt
+          retention-days: 90
+
       - name: Publish release (direct phone download)
+        if: github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
