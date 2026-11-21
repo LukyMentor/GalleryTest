@@ -324,6 +324,10 @@ fun WorldMap(
             .minByOrNull { it.second }?.first
     }
 
+    val tapTarget = androidx.compose.runtime.rememberUpdatedState<(Offset) -> PhotoCluster?> { p -> clusterAt(p) }
+    val tapAction = androidx.compose.runtime.rememberUpdatedState(onClusterTap)
+
+
     /** Zoom by [dz] keeping the world point under [focus] (screen px) fixed. */
     fun zoomAround(focus: Offset, dz: Float) {
         val w0 = worldSize()
@@ -343,6 +347,10 @@ fun WorldMap(
                 clampCamera()
             }
             .pointerInput(Unit) {
+                // The gesture loop lives on across recompositions: always ask the *current*
+                // bubbles (e.g. only the chosen day's), not the ones from when it started.
+                val clusterAt: (Offset) -> PhotoCluster? = { p -> tapTarget.value(p) }
+                val onClusterTap: (PhotoCluster) -> Unit = { c -> tapAction.value(c) }
                 coroutineScope {
                     var lastTapTime = 0L
                     var lastTapPos = Offset.Zero
