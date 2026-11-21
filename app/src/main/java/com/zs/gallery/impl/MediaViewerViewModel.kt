@@ -197,11 +197,7 @@ class MediaViewerViewModel(
                 MOVE, COPY -> {
                     val file = current ?: return@launch
                     val folders = provider.fetchFolders()
-                    val target = FileOps.pickFolder(
-                        resolver, if (value == MOVE) "Move to" else "Copy to", folders
-                    ) ?: return@launch
-                    if (value == MOVE) FileOps.move(resolver, listOf(file), target)
-                    else FileOps.copy(resolver, listOf(file), target)
+                    FileOps.moveOrCopy(resolver, listOf(file), value == MOVE, folders)
                 }
                 else -> error("Action not supported")
             }

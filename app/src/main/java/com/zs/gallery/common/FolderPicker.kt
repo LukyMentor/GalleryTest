@@ -81,14 +81,16 @@ object FolderPicker {
         val title: String,
         val folders: List<Pair<Folder, String>>,
         val result: CompletableDeferred<String?>,
+        /** Shown instead of "Choose a folder", e.g. why the last choice didn't work. */
+        val note: String? = null,
     )
 
     var request by mutableStateOf<Request?>(null)
         private set
 
     /** The chosen folder's relative path ("DCIM/Camera/"), [NEW_FOLDER], or null if dismissed. */
-    suspend fun pick(title: String, folders: List<Pair<Folder, String>>): String? {
-        val r = Request(title, folders, CompletableDeferred())
+    suspend fun pick(title: String, folders: List<Pair<Folder, String>>, note: String? = null): String? {
+        val r = Request(title, folders, CompletableDeferred(), note)
         request?.result?.complete(null)
         request = r
         return try {
@@ -226,10 +228,11 @@ private fun Sheet(request: FolderPicker.Request) {
                 modifier = Modifier.padding(start = 20.dp, top = 14.dp)
             )
             Label(
-                "Choose a folder",
+                request.note ?: "Choose a folder",
                 style = AppTheme.typography.body2,
-                color = colors.onBackground.copy(alpha = 0.65f),
-                modifier = Modifier.padding(start = 20.dp, top = 2.dp, bottom = 8.dp)
+                color = if (request.note != null) colors.error else colors.onBackground.copy(alpha = 0.65f),
+                fontWeight = if (request.note != null) FontWeight.Medium else FontWeight.Normal,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 8.dp)
             )
         }
         LazyVerticalGrid(

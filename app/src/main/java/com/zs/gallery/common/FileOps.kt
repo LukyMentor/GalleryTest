@@ -67,11 +67,13 @@ object FileOps {
         else android.R.style.Theme_DeviceDefault_Light_Dialog_Alert
 
     /** Lets the user pick a destination: existing folders + "New folder…". Null if cancelled. */
-    suspend fun pickFolder(activity: Activity, title: String, folders: List<com.zs.core.store.Folder>): String? {
+    suspend fun pickFolder(
+        activity: Activity, title: String, folders: List<com.zs.core.store.Folder>, note: String? = null,
+    ): String? {
         // Most recently used folders first (usually where things go).
         val choices = folders.mapNotNull { f -> relativePathOf(f.path)?.let { f to it } }
             .sortedByDescending { it.first.lastModified }
-        val picked = FolderPicker.pick(title, choices) ?: return null
+        val picked = FolderPicker.pick(title, choices, note) ?: return null
         if (picked != FolderPicker.NEW_FOLDER) return picked
         return askNewFolder(activity)
     }
@@ -151,11 +153,22 @@ object FileOps {
 
     /** Moves [files] into [relativePath] (e.g. "Pictures/Trips/"). Returns how many moved. */
     suspend fun move(activity: Activity, files: List<MediaFile>, relativePath: String): Int {
-        if (files.isEmpty()) return 0
+        val failed = moveCore(activity, files, relativePath) ?: return 0
+        val moved = files.size - failed.size
+        activity.toast(
+            if (moved == files.size) "Moved ${plural(moved)} to ${relativePath.trimEnd('/')}"
+            else "Moved $moved of ${files.size}; some can't go to that folder"
+        )
+        return moved
+    }
+
+    /** The files that couldn't be moved; null if the permission was refused. */
+    private suspend fun moveCore(activity: Activity, files: List<MediaFile>, relativePath: String): List<MediaFile>? {
+        if (files.isEmpty()) return emptyList()
         val uris = files.map { it.mediaUri }
-        if (!requestWrite(activity, uris)) return 0
-        val moved = withContext(Dispatchers.IO) {
-            files.count { file ->
+        if (!requestWrite(activity, uris)) return null
+        return withContext(Dispatchers.IO) {
+            files.filterNot { file ->
                 runCatching {
                     val values = ContentValues().apply {
                         put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
@@ -164,19 +177,65 @@ object FileOps {
                 }.getOrDefault(false)
             }
         }
-        activity.toast(
-            if (moved == files.size) "Moved ${plural(moved)} to ${relativePath.trimEnd('/')}"
-            else "Moved $moved of ${files.size}; some can't go to that folder"
-        )
-        return moved
+    }
+
+    /**
+     * "Move to…" / "Copy to…" from the folder sheet. If some items can't go to the chosen folder
+     * (e.g. photos into Movies/), the sheet opens again for just those, so a careful selection
+     * isn't lost. Returns how many ended up moved/copied.
+     */
+    suspend fun moveOrCopy(
+        activity: Activity, files: List<MediaFile>, move: Boolean, folders: List<com.zs.core.store.Folder>,
+    ): Int {
+        val verb = if (move) "move" else "copy"
+        val title = if (move) "Move to" else "Copy to"
+        var left = files
+        var done = 0
+        var note: String? = null
+        val placed = ArrayList<String>()
+        while (left.isNotEmpty()) {
+            val target = pickFolder(activity, title, folders, note) ?: break
+            val failed = (if (move) moveCore(activity, left, target) else copyCore(activity, left, target))
+                ?: return done.also { activity.toast("Not allowed to $verb these") }
+            val ok = left.size - failed.size
+            done += ok
+            if (ok > 0) placed += target.trimEnd('/')
+            left = failed
+            val where = target.trimEnd('/').substringAfterLast('/')
+            note = when {
+                failed.isEmpty() -> null
+                ok > 0 -> "${plural(ok).replaceFirstChar { it.uppercase() }} ${if (move) "moved" else "copied"}. " +
+                        "${plural(failed.size).replaceFirstChar { it.uppercase() }} can't go to $where – pick another folder for them."
+                else -> "Can't $verb ${if (failed.size == 1) "it" else "them"} to $where – pick another folder."
+            }
+        }
+        val past = if (move) "Moved" else "Copied"
+        when {
+            done == 0 && left.isNotEmpty() && note != null -> activity.toast("Nothing was ${past.lowercase()}")
+            left.isNotEmpty() && note != null ->
+                activity.toast("$past ${plural(done)}; ${plural(left.size)} stayed where they were")
+            done > 0 -> activity.toast("$past ${plural(done)} to ${placed.distinct().joinToString(", ")}")
+        }
+        return done
     }
 
     /** Copies [files] into [relativePath]. Returns how many were copied. */
     suspend fun copy(activity: Activity, files: List<MediaFile>, relativePath: String): Int {
-        if (files.isEmpty()) return 0
+        val failed = copyCore(activity, files, relativePath) ?: return 0
+        val copied = files.size - failed.size
+        activity.toast(
+            if (copied == files.size) "Copied ${plural(copied)} to ${relativePath.trimEnd('/')}"
+            else "Copied $copied of ${files.size}"
+        )
+        return copied
+    }
+
+    /** The files that couldn't be copied. */
+    private suspend fun copyCore(activity: Activity, files: List<MediaFile>, relativePath: String): List<MediaFile>? {
+        if (files.isEmpty()) return emptyList()
         val resolver = activity.contentResolver
-        val copied = withContext(Dispatchers.IO) {
-            files.count { file ->
+        return withContext(Dispatchers.IO) {
+            files.filterNot { file ->
                 runCatching {
                     val collection = if (file.isImage)
                         MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
@@ -209,11 +268,6 @@ object FileOps {
                 }.getOrDefault(false)
             }
         }
-        activity.toast(
-            if (copied == files.size) "Copied ${plural(copied)} to ${relativePath.trimEnd('/')}"
-            else "Copied $copied of ${files.size}"
-        )
-        return copied
     }
 
     /**
