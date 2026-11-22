@@ -478,6 +478,8 @@ fun PersonScreen(id: Long) {
         }
     }
     val selected = remember { mutableStateListOf<Long>() }
+    // Like / delete / share / move... - the same as in Photos.
+    val photoActions = org.koin.androidx.compose.koinViewModel<PersonPhotosViewModel>()
     // What the person picker is for: moving photos, or merging this whole person.
     var picker by remember { mutableStateOf<String?>(null) }
     // Choosing which photo their picture comes from.
@@ -588,6 +590,17 @@ fun PersonScreen(id: Long) {
                 val media = file.id
                 val isSelected = media in selected
                 Box {
+                // Liked: the same yellow star as in Photos.
+                if (media in photoActions.favourites)
+                    Icon(
+                        androidx.compose.material.icons.Icons.Filled.Star, "Favourite",
+                        tint = Color(0xFFFFC83D),
+                        modifier = Modifier
+                            .align(if (file.isImage) Alignment.TopEnd else Alignment.BottomEnd)
+                            .padding(5.dp).zIndexTop()
+                            .background(Color.Black.copy(alpha = 0.35f), androidx.compose.foundation.shape.CircleShape)
+                            .padding(3.dp).size(14.dp)
+                    )
                 if (!file.isImage)
                     Icon(
                         androidx.compose.material.icons.Icons.Filled.PlayCircle, null, tint = Color.White,
@@ -667,13 +680,44 @@ fun PersonScreen(id: Long) {
         }
         ViewerActions(
             visible = selected.isNotEmpty(),
-            actions = when (show) {
-                SHOW_SINGLE -> listOf(MOVE_TO_PERSON, NOT_THIS_PERSON, MARK_GROUP)
-                SHOW_GROUP -> listOf(MOVE_TO_PERSON, NOT_THIS_PERSON, MARK_SINGLE)
-                else -> listOf(MOVE_TO_PERSON, NOT_THIS_PERSON, MARK_SINGLE, MARK_GROUP)
+            // Photos' bar first (like, delete, share as buttons; the rest in the menu), then the
+            // face-only ones.
+            actions = buildList {
+                add(P_STAR); add(P_DELETE); add(P_SHARE)
+                add(P_QUICK_SHARE); add(P_MOVE); add(P_COPY)
+                if (selected.size == 1) add(P_RENAME)
+                add(MOVE_TO_PERSON); add(NOT_THIS_PERSON)
+                when (show) {
+                    SHOW_SINGLE -> add(MARK_GROUP)
+                    SHOW_GROUP -> add(MARK_SINGLE)
+                    else -> { add(MARK_SINGLE); add(MARK_GROUP) }
+                }
+                if (selected.size == 1) add(P_USE_AS_PICTURE)
+                add(P_ADD_TO_PERSON)
+                if (selected.size < photos.size) add(P_SELECT_ALL)
             },
             onAction = { action ->
-                if (action == MOVE_TO_PERSON) picker = "move"
+                if (action == P_SELECT_ALL) {
+                    val have = selected.toHashSet()
+                    selected.addAll(photos.filter { it !in have })
+                } else if (action == P_USE_AS_PICTURE) {
+                    val media = selected.firstOrNull() ?: return@ViewerActions
+                    selected.clear()
+                    scope.launch {
+                        val ok = withContext(Dispatchers.IO) { store.setCover(id, media) }
+                        FaceIndexer.changed()
+                        android.widget.Toast.makeText(
+                            context, if (ok) "Picture changed" else "No face of them in that photo",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                } else if (action in PHOTO_ACTIONS) {
+                    val wanted = selected.toHashSet()
+                    val files = sections.values.flatten().filter { it.id in wanted }
+                    selected.clear()
+                    val activity = context.findActivity() ?: return@ViewerActions
+                    photoActions.run(action, activity, files)
+                } else if (action == MOVE_TO_PERSON) picker = "move"
                 else if (action == MARK_GROUP || action == MARK_SINGLE) {
                     val ids = selected.toList()
                     selected.clear()
@@ -685,7 +729,7 @@ fun PersonScreen(id: Long) {
                 }
             },
             leading = { CountBubble(selected.size) },
-            visibleCount = 2,
+            visibleCount = 3,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .windowInsetsPadding(WindowInsets.navigationBars)
@@ -719,6 +763,14 @@ fun PersonScreen(id: Long) {
 }
 
 private const val NEW_PERSON = -2L
+
+private val PHOTO_ACTIONS = setOf(P_STAR, P_DELETE, P_SHARE, P_QUICK_SHARE, P_MOVE, P_COPY, P_RENAME, P_ADD_TO_PERSON)
+
+private tailrec fun Context.findActivity(): android.app.Activity? = when (this) {
+    is android.app.Activity -> this
+    is android.content.ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
 
 /** Last loaded lists, shown at once when a screen comes back (keeps scroll positions). */
 private object LastLists {

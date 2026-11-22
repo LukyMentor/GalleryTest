@@ -70,6 +70,7 @@ private val appModules = module {
     viewModelOf(::FilesViewModel)
     viewModelOf(::FoldersViewModel)
     viewModelOf(::MediaViewerViewModel)
+    viewModelOf(::com.zs.gallery.people.PersonPhotosViewModel)
 }
 
 class KoinInitializer : Initializer<Unit> {
