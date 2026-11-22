@@ -40,6 +40,7 @@ import org.koin.core.context.startKoin
 import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
+import com.zs.gallery.people.PersonPhotosViewModel
 import androidx.appcompat.content.res.AppCompatResources.getDrawable as Drawable
 import coil3.ImageLoader.Builder as ImageLoader
 import coil3.SingletonImageLoader.setUnsafe as Coil
@@ -70,7 +71,7 @@ private val appModules = module {
     viewModelOf(::FilesViewModel)
     viewModelOf(::FoldersViewModel)
     viewModelOf(::MediaViewerViewModel)
-    viewModelOf(::com.zs.gallery.people.PersonPhotosViewModel)
+    viewModelOf(::PersonPhotosViewModel)
 }
 
 class KoinInitializer : Initializer<Unit> {

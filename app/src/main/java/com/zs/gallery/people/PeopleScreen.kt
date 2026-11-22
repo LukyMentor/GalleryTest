@@ -54,6 +54,7 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.PersonOff
 import androidx.compose.material.icons.outlined.PersonRemove
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.SwitchAccount
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -593,7 +594,7 @@ fun PersonScreen(id: Long) {
                 // Liked: the same yellow star as in Photos.
                 if (media in photoActions.favourites)
                     Icon(
-                        androidx.compose.material.icons.Icons.Filled.Star, "Favourite",
+                        androidx.compose.material.icons.Icons.Filled.Star, contentDescription = "Favourite",
                         tint = Color(0xFFFFC83D),
                         modifier = Modifier
                             .align(if (file.isImage) Alignment.TopEnd else Alignment.BottomEnd)
