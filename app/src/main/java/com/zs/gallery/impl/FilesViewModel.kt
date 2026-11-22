@@ -206,8 +206,9 @@ class FilesViewModel(
     // Selection is kept in a hash set: membership checks are O(1), which matters for drag-select
     // (hundreds of items) and for every grid cell asking "am I selected?" on each frame.
     // Picking several photos for another app: one selection shared by every screen.
+    // (Also when only one is allowed: a long-press selection then still has a way to be sent.)
     private val selection =
-        if (com.zs.gallery.picker.PickMode.active && com.zs.gallery.picker.PickMode.multiple)
+        if (com.zs.gallery.picker.PickMode.active)
             com.zs.gallery.picker.PickMode.selected
         else mutableStateSetOf<Long>()
     override fun clear() = selection.clear()

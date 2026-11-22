@@ -53,23 +53,35 @@ fun PickBar() {
                     .background(colors.background(4.dp))
                     .padding(start = 20.dp, end = 6.dp, top = 6.dp, bottom = 6.dp)
             ) {
+                // The asking app may take just one (it decides, not us): say so instead of
+                // letting a long-press selection of several go nowhere.
+                val tooMany = !PickMode.multiple && count > 1
                 Column(Modifier.padding(end = 4.dp)) {
                     Label(
                         when {
-                            PickMode.multiple && count > 0 -> "$count selected"
+                            tooMany -> "Only 1 allowed here"
+                            count > 0 -> "$count selected"
                             PickMode.multiple -> "Choose photos"
                             PickMode.videosOnly -> "Choose a video"
                             else -> "Choose a photo"
                         },
-                        color = colors.onBackground, fontWeight = FontWeight.SemiBold
+                        color = if (tooMany) colors.error else colors.onBackground, fontWeight = FontWeight.SemiBold
                     )
-                    PickMode.caller?.let {
-                        Label("for $it", style = AppTheme.typography.label3, color = colors.onBackground.copy(alpha = 0.6f))
+                    val who = PickMode.caller?.let { "for $it" }
+                    val sub = when {
+                        tooMany -> "${PickMode.caller ?: "This app"} takes one at a time · $count selected"
+                        !PickMode.multiple -> listOfNotNull(who, "one only").joinToString(" · ")
+                        else -> who
+                    }
+                    sub?.let {
+                        Label(it, style = AppTheme.typography.label3, color = colors.onBackground.copy(alpha = 0.6f))
                     }
                 }
                 Pill("Cancel", primary = false) { PickMode.cancel() }
-                if (PickMode.multiple && count > 0)
-                    Pill("Add ($count)", primary = true) { PickMode.deliver(PickMode.selected.toList()) }
+                if (count > 0 && !tooMany)
+                    Pill(if (PickMode.multiple) "Add ($count)" else "Add", primary = true) {
+                        PickMode.deliver(PickMode.selected.toList())
+                    }
             }
         }
     }
