@@ -74,7 +74,6 @@ class PersonPhotosViewModel(provider: MediaProvider) : StoreViewModel(provider) 
             P_MOVE, P_COPY, P_RENAME -> viewModelScope.launch {
                 if (action == P_RENAME) FileOps.rename(activity, files.first())
                 else FileOps.moveOrCopy(activity, files, action == P_MOVE, provider.fetchFolders())
-                FaceIndexer.changed()
             }
         }
     }

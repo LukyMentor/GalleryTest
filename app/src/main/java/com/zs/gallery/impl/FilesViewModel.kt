@@ -401,10 +401,11 @@ class FilesViewModel(
                     val wanted = focused.toHashSet()
                     val files = data?.values?.flatten()?.filter { it.id in wanted }.orEmpty()
                     if (files.isEmpty()) return@launch
-                    val done = if (value == MOVE_HERE) FileOps.move(resolver, files, target)
-                    else FileOps.copy(resolver, files, target)
-                    // Back to Folders, where the new folder now shows up.
-                    if (done > 0) (resolver as? androidx.activity.ComponentActivity)
+                    val started = FileOps.moveOrCopyTo(
+                        resolver, files, value == MOVE_HERE, target, provider.fetchFolders()
+                    )
+                    // Back to Folders, where the new folder shows up as the files arrive.
+                    if (started) (resolver as? androidx.activity.ComponentActivity)
                         ?.onBackPressedDispatcher?.onBackPressed()
                 }
                 ADD_TO_PERSON -> {

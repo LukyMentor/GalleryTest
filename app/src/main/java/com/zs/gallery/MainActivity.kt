@@ -219,6 +219,7 @@ open class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
         // irrespective of what value it holds update it.
         Log.d(TAG, "onPause")
         if (!authInProgress) timeAppWentToBackground = System.currentTimeMillis()
+        com.zs.gallery.common.FileJobs.onPaused(this)
     }
 
     @SuppressLint("NewApi")
@@ -232,7 +233,11 @@ open class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
         // On a fresh start, timeAppWentToBackground is -1L.
         // If authentication is required on a fresh start, the app will be
         // automatically navigated to the lock screen in onCreate().
-        if (timeAppWentToBackground != -1L && isAuthenticationRequired) {
+        val locking = timeAppWentToBackground != -1L && isAuthenticationRequired
+        // Copy/move leftovers waiting for a folder: only once the app is unlocked.
+        if (!locking && navController?.currentDestination?.domain != RouteLockScreen.domain)
+            com.zs.gallery.common.FileJobs.onResumed(this)
+        if (locking) {
             Log.d(TAG, "onResume: navigating -> RouteLockScreen.")
             // since navController doesn't support adding new dest at the bottom of topMost dest;
             // remove current destination to insert lock screen below
@@ -351,6 +356,7 @@ open class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
         }
         // Opened to edit something (screenshot pop-up): go there now, not to the grid.
         pendingEdit?.let { pendingEdit = null; openCrop(it) }
+        com.zs.gallery.common.FileJobs.onResumed(this)
     }
 
     override fun showSnackbar(

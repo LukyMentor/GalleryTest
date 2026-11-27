@@ -28,6 +28,7 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import com.zs.core.store.MediaFile
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -151,123 +152,136 @@ object FileOps {
     // Operations
     // ---------------------------------------------------------------------------------------------
 
-    /** Moves [files] into [relativePath] (e.g. "Pictures/Trips/"). Returns how many moved. */
-    suspend fun move(activity: Activity, files: List<MediaFile>, relativePath: String): Int {
-        val failed = moveCore(activity, files, relativePath) ?: return 0
-        val moved = files.size - failed.size
-        activity.toast(
-            if (moved == files.size) "Moved ${plural(moved)} to ${relativePath.trimEnd('/')}"
-            else "Moved $moved of ${files.size}; some can't go to that folder"
-        )
-        return moved
-    }
-
-    /** The files that couldn't be moved; null if the permission was refused. */
-    private suspend fun moveCore(activity: Activity, files: List<MediaFile>, relativePath: String): List<MediaFile>? {
-        if (files.isEmpty()) return emptyList()
-        val uris = files.map { it.mediaUri }
-        if (!requestWrite(activity, uris)) return null
-        return withContext(Dispatchers.IO) {
-            files.filterNot { file ->
-                runCatching {
-                    val values = ContentValues().apply {
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
-                    }
-                    activity.contentResolver.update(file.mediaUri, values, null, null) > 0
-                }.getOrDefault(false)
-            }
-        }
-    }
-
     /**
-     * "Move to…" / "Copy to…" from the folder sheet. If some items can't go to the chosen folder
-     * (e.g. photos into Movies/), the sheet opens again for just those, so a careful selection
-     * isn't lost. Returns how many ended up moved/copied.
+     * "Move to..." / "Copy to..." from the folder sheet. The work itself runs in the background
+     * ([FileJobs]); items a folder refuses (e.g. photos into Movies/) come back as a folder sheet
+     * for just those, so a careful selection isn't lost.
      */
     suspend fun moveOrCopy(
         activity: Activity, files: List<MediaFile>, move: Boolean, folders: List<com.zs.core.store.Folder>,
-    ): Int {
-        val verb = if (move) "move" else "copy"
-        val title = if (move) "Move to" else "Copy to"
-        var left = files
-        var done = 0
-        var note: String? = null
-        val placed = ArrayList<String>()
-        while (left.isNotEmpty()) {
-            val target = pickFolder(activity, title, folders, note) ?: break
-            val failed = (if (move) moveCore(activity, left, target) else copyCore(activity, left, target))
-                ?: return done.also { activity.toast("Not allowed to $verb these") }
-            val ok = left.size - failed.size
-            done += ok
-            if (ok > 0) placed += target.trimEnd('/')
-            left = failed
-            val where = target.trimEnd('/').substringAfterLast('/')
-            note = when {
-                failed.isEmpty() -> null
-                ok > 0 -> "${plural(ok).replaceFirstChar { it.uppercase() }} ${if (move) "moved" else "copied"}. " +
-                        "${plural(failed.size).replaceFirstChar { it.uppercase() }} can't go to $where – pick another folder for them."
-                else -> "Can't $verb ${if (failed.size == 1) "it" else "them"} to $where – pick another folder."
+    ) = continueMoveOrCopy(activity, files, move, folders, null, 0, emptyList())
+
+    /** One round: pick a folder (with [note] about the last round), then start the job. */
+    suspend fun continueMoveOrCopy(
+        activity: Activity, files: List<MediaFile>, move: Boolean, folders: List<com.zs.core.store.Folder>,
+        note: String?, done: Int, placed: List<String>,
+    ) {
+        if (files.isEmpty()) return
+        val target = pickFolder(activity, if (move) "Move to" else "Copy to", folders, note)
+        if (target == null) {
+            // Gave up on the leftovers.
+            if (note != null) {
+                val past = if (move) "Moved" else "Copied"
+                activity.toast(
+                    if (done == 0) "Nothing was ${past.lowercase()}"
+                    else "$past ${plural(done)}; ${plural(files.size)} stayed where they were"
+                )
             }
+            return
         }
-        val past = if (move) "Moved" else "Copied"
-        when {
-            done == 0 && left.isNotEmpty() && note != null -> activity.toast("Nothing was ${past.lowercase()}")
-            left.isNotEmpty() && note != null ->
-                activity.toast("$past ${plural(done)}; ${plural(left.size)} stayed where they were")
-            done > 0 -> activity.toast("$past ${plural(done)} to ${placed.distinct().joinToString(", ")}")
-        }
-        return done
+        startJob(activity, files, move, target, folders, done, placed)
     }
 
-    /** Copies [files] into [relativePath]. Returns how many were copied. */
-    suspend fun copy(activity: Activity, files: List<MediaFile>, relativePath: String): Int {
-        val failed = copyCore(activity, files, relativePath) ?: return 0
-        val copied = files.size - failed.size
-        activity.toast(
-            if (copied == files.size) "Copied ${plural(copied)} to ${relativePath.trimEnd('/')}"
-            else "Copied $copied of ${files.size}"
-        )
-        return copied
+    /** "Move here" / "Copy here" (new folder): starts the job. False if it couldn't start. */
+    suspend fun moveOrCopyTo(
+        activity: Activity, files: List<MediaFile>, move: Boolean, target: String,
+        folders: List<com.zs.core.store.Folder>,
+    ): Boolean = startJob(activity, files, move, target, folders, 0, emptyList())
+
+    private suspend fun startJob(
+        activity: Activity, files: List<MediaFile>, move: Boolean, target: String,
+        folders: List<com.zs.core.store.Folder>, done: Int, placed: List<String>,
+    ): Boolean {
+        if (move && !requestWrite(activity, files.map { it.mediaUri })) {
+            activity.toast("Not allowed to move these")
+            return false
+        }
+        askForNotifications(activity)
+        FileJobs.start(activity, files, target, move, folders, done, placed)
+        return true
     }
 
-    /** The files that couldn't be copied. */
-    private suspend fun copyCore(activity: Activity, files: List<MediaFile>, relativePath: String): List<MediaFile>? {
-        if (files.isEmpty()) return emptyList()
-        val resolver = activity.contentResolver
-        return withContext(Dispatchers.IO) {
-            files.filterNot { file ->
-                runCatching {
-                    val collection = if (file.isImage)
-                        MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                    else
-                        MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                    val values = ContentValues().apply {
-                        put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
-                        put(MediaStore.MediaColumns.MIME_TYPE, file.mimeType)
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
-                        if (file.dateTaken > 0) put(MediaStore.MediaColumns.DATE_TAKEN, file.dateTaken)
-                        put(MediaStore.MediaColumns.IS_PENDING, 1)
-                    }
-                    val target = resolver.insert(collection, values) ?: return@runCatching false
-                    try {
-                        resolver.openInputStream(file.mediaUri).use { input ->
-                            resolver.openOutputStream(target).use { output ->
-                                requireNotNull(input).copyTo(requireNotNull(output))
-                            }
+    /** Progress shows as a notification; ask once for permission to show it (Android 13+). */
+    private fun askForNotifications(activity: Activity) {
+        if (Build.VERSION.SDK_INT < 33) return
+        val perm = android.Manifest.permission.POST_NOTIFICATIONS
+        if (activity.checkSelfPermission(perm) == android.content.pm.PackageManager.PERMISSION_GRANTED) return
+        val prefs = activity.getSharedPreferences("file_jobs", android.content.Context.MODE_PRIVATE)
+        if (prefs.getBoolean("asked", false)) return
+        prefs.edit().putBoolean("asked", true).apply()
+        activity.requestPermissions(arrayOf(perm), 4711)
+    }
+
+    /** Moves [files] into [relativePath]; returns the ones that couldn't be moved. */
+    internal suspend fun moveFiles(
+        resolver: android.content.ContentResolver, files: List<MediaFile>, relativePath: String,
+        onFile: (Int) -> Unit,
+    ): List<MediaFile> = withContext(Dispatchers.IO) {
+        val failed = ArrayList<MediaFile>()
+        files.forEachIndexed { i, file ->
+            ensureActive()
+            onFile(i)
+            val ok = try {
+                val values = ContentValues().apply { put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath) }
+                resolver.update(file.mediaUri, values, null, null) > 0
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { false }
+            if (!ok) failed += file
+        }
+        failed
+    }
+
+    /** Copies [files] into [relativePath]; returns the ones that couldn't be copied. */
+    internal suspend fun copyFiles(
+        resolver: android.content.ContentResolver, files: List<MediaFile>, relativePath: String,
+        onFile: (Int) -> Unit, onBytes: (Long) -> Unit,
+    ): List<MediaFile> = withContext(Dispatchers.IO) {
+        val failed = ArrayList<MediaFile>()
+        val buffer = ByteArray(256 * 1024)
+        files.forEachIndexed { i, file ->
+            ensureActive()
+            onFile(i)
+            val collection = if (file.isImage)
+                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            else
+                MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+                put(MediaStore.MediaColumns.MIME_TYPE, file.mimeType)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+                if (file.dateTaken > 0) put(MediaStore.MediaColumns.DATE_TAKEN, file.dateTaken)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val target = try { resolver.insert(collection, values) } catch (e: Exception) { null }
+            if (target == null) { failed += file; return@forEachIndexed }
+            var ok = false
+            try {
+                resolver.openInputStream(file.mediaUri).use { input ->
+                    resolver.openOutputStream(target).use { output ->
+                        requireNotNull(input); requireNotNull(output)
+                        while (true) {
+                            ensureActive()
+                            val n = input.read(buffer)
+                            if (n < 0) break
+                            output.write(buffer, 0, n)
+                            onBytes(n.toLong())
                         }
-                        resolver.update(
-                            target,
-                            ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
-                            null, null
-                        )
-                        true
-                    } catch (e: Exception) {
-                        resolver.delete(target, null, null)
-                        false
                     }
-                }.getOrDefault(false)
+                }
+                resolver.update(
+                    target, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null
+                )
+                ok = true
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // counted as failed below
+            } finally {
+                // Unfinished (failed or cancelled): no half-copied file left behind.
+                if (!ok) runCatching { resolver.delete(target, null, null) }
             }
+            if (!ok) failed += file
         }
+        failed
     }
 
     /**
