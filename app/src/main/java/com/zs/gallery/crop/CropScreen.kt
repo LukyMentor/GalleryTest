@@ -51,6 +51,9 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.material.icons.outlined.BorderColor
 import androidx.compose.material.icons.outlined.Gesture
 import androidx.compose.material.icons.outlined.NorthEast
+import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -86,6 +89,8 @@ import androidx.compose.ui.unit.dp
 import coil3.SingletonImageLoader
 import com.zs.compose.foundation.findActivity
 import com.zs.compose.theme.AppTheme
+import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.LaunchedEffect
 import com.zs.compose.theme.IconButton
 import com.zs.compose.theme.text.Label
 import com.zs.gallery.R
@@ -222,6 +227,10 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
     val marks = remember { mutableStateListOf<Mark>() }
     var tool by rememberSaveable { mutableStateOf(Tool.ARROW) }
     var colorIndex by rememberSaveable { mutableIntStateOf(0) }
+    // Text: size for new texts (index into TextSizes), the text being typed, the last one placed.
+    var textSize by rememberSaveable { mutableIntStateOf(1) }
+    var editing by remember { mutableStateOf<TextEdit?>(null) }
+    var lastText by remember { mutableIntStateOf(-1) }
     var saving by remember { mutableStateOf(false) }
     var area by remember { mutableStateOf(IntSize.Zero) }
     // Room around the photo, so the handles at its edges are easy to grab.
@@ -253,7 +262,7 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
         crop = Rect(min(a.x, b.x), min(a.y, b.y), max(a.x, b.x), max(a.y, b.y))
         if (ratio != 0f) ratio = 1f / ratio
         // Widths are a fraction of the photo's width, which is now the old height.
-        val turned = marks.map { m -> Mark(m.tool, m.color, m.width * w0 / h0, m.points.map(::map)) }
+        val turned = marks.map { m -> Mark(m.tool, m.color, m.width * w0 / h0, m.points.map(::map), m.text) }
         marks.clear()
         marks.addAll(turned)
     }
@@ -339,14 +348,61 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
                 .weight(1f)
                 .fillMaxWidth()
                 .onSizeChanged { area = it }
-                .pointerInput(imageRect, ratio, drawMode, tool, colorIndex) {
+                .pointerInput(imageRect, ratio, drawMode, tool, colorIndex, textSize) {
                     if (imageRect.isEmpty) return@pointerInput
+                    if (drawMode && tool == Tool.TEXT) {
+                        fun norm(p: Offset) = Offset(
+                            ((p.x - imageRect.left) / imageRect.width).coerceIn(0f, 1f),
+                            ((p.y - imageRect.top) / imageRect.height).coerceIn(0f, 1f)
+                        )
+                        fun textAt(p: Offset): Int {
+                            val pad = 12.dp.toPx()
+                            for (i in marks.indices.reversed()) {
+                                val m = marks[i]
+                                if (m.tool != Tool.TEXT) continue
+                                val b = textBounds(m, imageRect.left, imageRect.top, imageRect.width, imageRect.height)
+                                if (p.x in b.left - pad..b.right + pad && p.y in b.top - pad..b.bottom + pad) return i
+                            }
+                            return -1
+                        }
+                        // Tap: add text there (or edit the text you tapped). Drag a text: move it.
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            val hit = textAt(down.position)
+                            val start = if (hit >= 0) marks[hit].points.first() else Offset.Zero
+                            var total = Offset.Zero
+                            var moved = false
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                change.consume()
+                                total += change.positionChange()
+                                if (hit >= 0 && (moved || total.getDistance() > viewConfiguration.touchSlop)) {
+                                    moved = true
+                                    val m = marks[hit]
+                                    val np = Offset(
+                                        (start.x + total.x / imageRect.width).coerceIn(0f, 1f),
+                                        (start.y + total.y / imageRect.height).coerceIn(0f, 1f)
+                                    )
+                                    marks[hit] = Mark(m.tool, m.color, m.width, listOf(np), m.text)
+                                    lastText = hit
+                                }
+                            }
+                            if (!moved) editing =
+                                if (hit >= 0) TextEdit(hit, marks[hit].points.first(), marks[hit].text)
+                                else TextEdit(-1, norm(down.position), "")
+                        }
+                        return@pointerInput
+                    }
                     if (drawMode) {
                         // Draw: one finger paints the chosen tool.
                         val widthPx = when (tool) {
                             Tool.PEN -> 4.dp.toPx()
                             Tool.HIGHLIGHTER -> 22.dp.toPx()
                             Tool.ARROW -> 5.dp.toPx()
+                            Tool.TEXT -> 0f
                         }
                         fun norm(p: Offset) = Offset(
                             ((p.x - imageRect.left) / imageRect.width).coerceIn(0f, 1f),
@@ -467,6 +523,13 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
                 }
         }
         // Rotate + shapes (crop) or tools + colours (draw).
+        if (drawMode && tool == Tool.TEXT && marks.none { it.tool == Tool.TEXT })
+            Label(
+                "Tap the photo where the text should go",
+                color = Color.White.copy(alpha = 0.7f),
+                style = AppTheme.typography.label3,
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp)
+            )
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -486,9 +549,23 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
                 ToolButton(Icons.Outlined.NorthEast, "Arrow", tool == Tool.ARROW) { tool = Tool.ARROW }
                 ToolButton(Icons.Outlined.Gesture, "Pen", tool == Tool.PEN) { tool = Tool.PEN }
                 ToolButton(Icons.Outlined.BorderColor, "Highlighter", tool == Tool.HIGHLIGHTER) { tool = Tool.HIGHLIGHTER }
+                ToolButton(Icons.Outlined.TextFields, "Text", tool == Tool.TEXT) { tool = Tool.TEXT }
+                // Changing size / colour right after placing a text changes that text too.
+                fun restyle() {
+                    val i = lastText
+                    if (tool != Tool.TEXT || i !in marks.indices || marks[i].tool != Tool.TEXT) return
+                    val m = marks[i]
+                    marks[i] = Mark(Tool.TEXT, Palette[colorIndex], TextSizes[textSize].second, m.points, m.text)
+                }
+                if (tool == Tool.TEXT) {
+                    Spacer(Modifier.size(width = 6.dp, height = 1.dp))
+                    TextSizes.forEachIndexed { i, (label, _) ->
+                        Pill(label, selected = i == textSize, onClick = { textSize = i; restyle() })
+                    }
+                }
                 Spacer(Modifier.size(width = 6.dp, height = 1.dp))
                 Palette.forEachIndexed { i, c ->
-                    Swatch(c, selected = i == colorIndex) { colorIndex = i }
+                    Swatch(c, selected = i == colorIndex) { colorIndex = i; restyle() }
                 }
             }
         }
@@ -511,11 +588,103 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
                 }
         }
     }
+    // Typing a text (over everything, above the keyboard).
+    editing?.let { e ->
+        androidx.activity.compose.BackHandler { editing = null }
+        TextEntry(
+            initial = e.text,
+            color = if (e.index >= 0) marks.getOrNull(e.index)?.color ?: Palette[colorIndex] else Palette[colorIndex],
+            canDelete = e.index >= 0,
+            onCancel = { editing = null },
+            onDelete = {
+                if (e.index in marks.indices) marks.removeAt(e.index)
+                lastText = -1
+                editing = null
+            },
+            onDone = { text ->
+                editing = null
+                val t = text.trimEnd()
+                if (e.index in marks.indices) {
+                    val m = marks[e.index]
+                    if (t.isBlank()) { marks.removeAt(e.index); lastText = -1 }
+                    else { marks[e.index] = Mark(m.tool, m.color, m.width, m.points, t); lastText = e.index }
+                } else if (t.isNotBlank()) {
+                    marks += Mark(Tool.TEXT, Palette[colorIndex], TextSizes[textSize].second, listOf(e.at), t)
+                    lastText = marks.lastIndex
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun TextEntry(
+    initial: String, color: Color, canDelete: Boolean,
+    onCancel: () -> Unit, onDelete: () -> Unit, onDone: (String) -> Unit,
+) {
+    var value by remember {
+        mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(initial, androidx.compose.ui.text.TextRange(initial.length)))
+    }
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.72f))
+            .pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } }
+            .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.systemBars)
+            .imePadding()
+    ) {
+        androidx.compose.foundation.text.BasicTextField(
+            value = value,
+            onValueChange = { value = it },
+            textStyle = androidx.compose.ui.text.TextStyle(
+                color = color, fontSize = 30.sp, fontWeight = FontWeight.Bold,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            ),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(color),
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .focusRequester(focus),
+            decorationBox = { inner ->
+                Box(contentAlignment = Alignment.Center) {
+                    if (value.text.isEmpty())
+                        androidx.compose.foundation.text.BasicText(
+                            "Type something",
+                            style = androidx.compose.ui.text.TextStyle(
+                                color = Color.White.copy(alpha = 0.4f), fontSize = 30.sp, fontWeight = FontWeight.Bold
+                            )
+                        )
+                    inner()
+                }
+            }
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Pill("Cancel", selected = false, big = true, modifier = Modifier.weight(1f), onClick = onCancel)
+            if (canDelete)
+                Pill("Delete", selected = false, big = true, modifier = Modifier.weight(1f), onClick = onDelete)
+            Pill("Done", selected = true, big = true, modifier = Modifier.weight(1f)) { onDone(value.text) }
+        }
+    }
 }
 
 private data class Quad(val a: Float, val b: Float, val c: Float, val d: Float)
 
-internal enum class Tool { PEN, HIGHLIGHTER, ARROW }
+internal enum class Tool { PEN, HIGHLIGHTER, ARROW, TEXT }
+
+/** Text sizes, as a fraction of the photo's width. */
+private val TextSizes = listOf("S" to 0.045f, "M" to 0.07f, "L" to 0.11f)
+
+/** The text being typed: [index] of the mark being edited, or -1 for a new one at [at]. */
+private data class TextEdit(val index: Int, val at: Offset, val text: String)
 
 /** Red, yellow, green, blue, purple, white, black. */
 private val Palette = listOf(
@@ -524,12 +693,62 @@ private val Palette = listOf(
 )
 
 /** One drawing: points in 0..1 of the photo, width as a fraction of the photo's width. */
-internal class Mark(val tool: Tool, val color: Color, val width: Float, val points: List<Offset>) {
-    fun frozen() = Mark(tool, color, width, points.toList())
+internal class Mark(
+    val tool: Tool, val color: Color, val width: Float, val points: List<Offset>, val text: String = "",
+) {
+    fun frozen() = Mark(tool, color, width, points.toList(), text)
+}
+
+private fun textPaints(m: Mark, w: Float): Pair<android.graphics.Paint, android.graphics.Paint> {
+    val size = max(6f, m.width * w)
+    val fill = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = size
+        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        textAlign = android.graphics.Paint.Align.CENTER
+        color = m.color.toArgb()
+    }
+    // A thin contrasting outline keeps it readable on any background.
+    val light = m.color.red * 0.3f + m.color.green * 0.59f + m.color.blue * 0.11f > 0.5f
+    val outline = android.graphics.Paint(fill).apply {
+        style = android.graphics.Paint.Style.STROKE
+        strokeWidth = size * 0.14f
+        strokeJoin = android.graphics.Paint.Join.ROUND
+        color = if (light) android.graphics.Color.argb(220, 0, 0, 0) else android.graphics.Color.argb(230, 255, 255, 255)
+    }
+    return fill to outline
+}
+
+/** Where text [m] sits on a photo at (left, top, w x h). */
+private fun textBounds(m: Mark, left: Float, top: Float, w: Float, h: Float): android.graphics.RectF {
+    val (fill, _) = textPaints(m, w)
+    val lines = m.text.split('\n')
+    val lineH = fill.textSize * 1.2f
+    val width = lines.maxOf { fill.measureText(it) }
+    val cx = left + m.points.first().x * w
+    val cy = top + m.points.first().y * h
+    val total = lineH * lines.size
+    return android.graphics.RectF(cx - width / 2, cy - total / 2, cx + width / 2, cy + total / 2)
+}
+
+private fun drawText(c: android.graphics.Canvas, m: Mark, left: Float, top: Float, w: Float, h: Float) {
+    if (m.text.isBlank() || m.points.isEmpty()) return
+    val (fill, outline) = textPaints(m, w)
+    val lines = m.text.split('\n')
+    val lineH = fill.textSize * 1.2f
+    val cx = left + m.points.first().x * w
+    val cy = top + m.points.first().y * h
+    // Baselines, so the block is centred on the point.
+    var y = cy - lineH * lines.size / 2 - fill.fontMetrics.ascent + (lineH - fill.textSize) / 2
+    for (line in lines) {
+        c.drawText(line, cx, y, outline)
+        c.drawText(line, cx, y, fill)
+        y += lineH
+    }
 }
 
 /** Draws [m] onto a photo occupying (left, top, w x h) of [c]. Same code for screen and file. */
 private fun drawMark(c: android.graphics.Canvas, m: Mark, left: Float, top: Float, w: Float, h: Float) {
+    if (m.tool == Tool.TEXT) return drawText(c, m, left, top, w, h)
     val pts = m.points
     if (pts.isEmpty()) return
     val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
