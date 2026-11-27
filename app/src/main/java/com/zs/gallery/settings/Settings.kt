@@ -667,7 +667,12 @@ private fun LanguageCard() {
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Label(tr("App language", "Jazyk aplikace"), style = AppTheme.typography.body1, fontWeight = FontWeight.SemiBold)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Wraps to a second line when the chips don't fit (they did get squashed).
+        @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             for ((tag, label) in listOf(
                 com.zs.gallery.common.Lang.SYSTEM to tr("Like the phone", "Podle telefonu"),
                 com.zs.gallery.common.Lang.ENGLISH to "English",
