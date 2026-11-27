@@ -10,6 +10,8 @@
 
 package com.zs.gallery.files
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -70,10 +72,10 @@ internal fun FilterBar(
             .horizontalScroll(rememberScrollState())
             .padding(vertical = 8.dp)
     ) {
-        FilterChip("All", filter == MediaFilter.ALL) { onFilter(MediaFilter.ALL) }
-        FilterChip("Photos", filter == MediaFilter.PHOTOS) { onFilter(MediaFilter.PHOTOS) }
-        FilterChip("Videos", filter == MediaFilter.VIDEOS) { onFilter(MediaFilter.VIDEOS) }
-        FilterChip("Screenshots", filter == MediaFilter.SCREENSHOTS) { onFilter(MediaFilter.SCREENSHOTS) }
+        FilterChip(tr("All", "Vše"), filter == MediaFilter.ALL) { onFilter(MediaFilter.ALL) }
+        FilterChip(tr("Photos", "Fotky"), filter == MediaFilter.PHOTOS) { onFilter(MediaFilter.PHOTOS) }
+        FilterChip(tr("Videos", "Videa"), filter == MediaFilter.VIDEOS) { onFilter(MediaFilter.VIDEOS) }
+        FilterChip(tr("Screenshots", "Snímky obrazovky"), filter == MediaFilter.SCREENSHOTS) { onFilter(MediaFilter.SCREENSHOTS) }
         // Divider between "what" and "how".
         Box(
             Modifier
@@ -82,9 +84,9 @@ internal fun FilterBar(
                 .height(24.dp)
                 .background(AppTheme.colors.onBackground.copy(alpha = 0.2f))
         )
-        FilterChip("Newest", order == MediaOrder.NEWEST) { onOrder(MediaOrder.NEWEST) }
-        FilterChip("Oldest", order == MediaOrder.OLDEST) { onOrder(MediaOrder.OLDEST) }
-        FilterChip("Largest", order == MediaOrder.LARGEST) { onOrder(MediaOrder.LARGEST) }
+        FilterChip(tr("Newest", "Nejnovější"), order == MediaOrder.NEWEST) { onOrder(MediaOrder.NEWEST) }
+        FilterChip(tr("Oldest", "Nejstarší"), order == MediaOrder.OLDEST) { onOrder(MediaOrder.OLDEST) }
+        FilterChip(tr("Largest", "Největší"), order == MediaOrder.LARGEST) { onOrder(MediaOrder.LARGEST) }
     }
 }
 

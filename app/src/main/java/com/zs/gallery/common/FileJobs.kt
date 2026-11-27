@@ -100,9 +100,9 @@ object FileJobs {
         if (files.isEmpty()) return
         val app = context.applicationContext
         channel(app)
-        val verb = if (move) "Moving" else "Copying"
+        val verb = if (move) tr("Moving", "Přesouvám") else tr("Copying", "Kopíruji")
         val where = target.trimEnd('/')
-        current = progress(app, "$verb ${plural(files.size)}", "to $where", 0, 0, true)
+        current = progress(app, "$verb ${plural(files.size)}", tr("to $where", "do $where"), 0, 0, true)
         runCatching {
             val intent = Intent(app, FileJobService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) app.startForegroundService(intent)
@@ -110,7 +110,7 @@ object FileJobs {
         }
         // Bigger jobs: say where to follow them.
         if (files.size > 5 || files.sumOf { it.size } > 50L * 1024 * 1024)
-            toast(app, "$verb ${plural(files.size)} in the background – progress is in your notifications")
+            toast(app, tr("$verb ${plural(files.size)} in the background – progress is in your notifications", "$verb ${plural(files.size)} na pozadí – průběh najdete v oznámeních"))
 
         val job = scope.launch {
             queue.withLock {
@@ -128,7 +128,7 @@ object FileJobs {
                     if (move) {
                         FileOps.moveFiles(app.contentResolver, files, target) { n ->
                             count = n
-                            post { progress(app, "Moving ${n + 1} of ${files.size}", "to $where", files.size, n, false) }
+                            post { progress(app, tr("Moving ${n + 1} of ${files.size}", "Přesouvám ${n + 1} z ${files.size}"), tr("to $where", "do $where"), files.size, n, false) }
                         }
                     } else {
                         val total = files.sumOf { it.size }.coerceAtLeast(1)
@@ -140,16 +140,19 @@ object FileJobs {
                                 bytes += b
                                 post {
                                     progress(
-                                        app, "Copying ${(count + 1).coerceAtMost(files.size)} of ${files.size}",
-                                        "to $where", 1000, (bytes * 1000 / total).toInt(), false
+                                        app, tr("Copying ", "Kopíruji ") + "${(count + 1).coerceAtMost(files.size)} " + tr("of", "z") + " ${files.size}",
+                                        tr("to $where", "do $where"), 1000, (bytes * 1000 / total).toInt(), false
                                     )
                                 }
                             }
                         )
                     }
                 } catch (e: CancellationException) {
-                    val past = if (move) "Moved" else "Copied"
-                    finished(app, "${if (move) "Move" else "Copy"} cancelled", "$past $count of ${files.size}")
+                    val past = if (move) tr("Moved", "Přesunuto") else tr("Copied", "Zkopírováno")
+                    finished(
+                        app, if (move) tr("Move cancelled", "Přesun zrušen") else tr("Copy cancelled", "Kopírování zrušeno"),
+                        "$past $count " + tr("of", "z") + " ${files.size}"
+                    )
                     com.zs.gallery.people.FaceIndexer.changed()
                     throw e
                 }
@@ -157,26 +160,32 @@ object FileJobs {
                 val ok = files.size - failed.size
                 val allDone = done + ok
                 val allPlaced = if (ok > 0) (placed + where).distinct() else placed
-                val past = if (move) "Moved" else "Copied"
+                val past = if (move) tr("Moved", "Přesunuto") else tr("Copied", "Zkopírováno")
+                val to = tr("to", "do")
                 if (failed.isEmpty()) {
-                    val text = "$past ${plural(allDone)} to ${allPlaced.joinToString(", ")}"
+                    val text = "$past ${plural(allDone)} $to ${allPlaced.joinToString(", ")}"
                     // Quick ones only need a toast; long ones also leave a "done" notification.
-                    if (SystemClock.elapsedRealtime() - started > 3000) finished(app, "$past ${plural(allDone)}", "to ${allPlaced.joinToString(", ")}")
+                    if (SystemClock.elapsedRealtime() - started > 3000) finished(app, "$past ${plural(allDone)}", "$to ${allPlaced.joinToString(", ")}")
                     toast(app, text)
                 } else {
                     val short = where.substringAfterLast('/')
                     val v = if (move) "move" else "copy"
-                    val note = if (ok > 0)
-                        "${plural(ok).cap()} ${past.lowercase()}. ${plural(failed.size).cap()} can't go to $short – pick another folder for them."
-                    else "Can't $v ${if (failed.size == 1) "it" else "them"} to $short – pick another folder."
+                    val note = if (ok > 0) tr(
+                        "${plural(ok).cap()} ${past.lowercase()}. ${plural(failed.size).cap()} can't go to $short – pick another folder for them.",
+                        "$past: ${plural(ok)}. Do $short nemůže: ${plural(failed.size)} – vyberte pro ně jinou složku."
+                    )
+                    else tr(
+                        "Can't $v ${if (failed.size == 1) "it" else "them"} to $short – pick another folder.",
+                        "Do $short to ${if (move) "přesunout" else "zkopírovat"} nejde – vyberte jinou složku."
+                    )
                     val retry = Retry(failed, move, folders, note, allDone, allPlaced)
                     val activity = visible?.get()
                     if (activity != null && !activity.isFinishing) main.post { runRetry(activity, retry) }
                     else {
                         pendingRetry = retry
                         finished(
-                            app, "${plural(failed.size).cap()} can't go to $short",
-                            "Tap to choose another folder", openApp = true
+                            app, tr("${plural(failed.size).cap()} can't go to $short", "Do $short nemůže: ${plural(failed.size)}"),
+                            tr("Tap to choose another folder", "Klepnutím vyberete jinou složku"), openApp = true
                         )
                     }
                 }
@@ -211,8 +220,8 @@ object FileJobs {
     private fun channel(app: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         nm(app).createNotificationChannel(
-            NotificationChannel(CHANNEL, "Copying & moving", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Progress of copying and moving photos"
+            NotificationChannel(CHANNEL, tr("Copying & moving", "Kopírování a přesouvání"), NotificationManager.IMPORTANCE_LOW).apply {
+                description = tr("Progress of copying and moving photos", "Průběh kopírování a přesouvání fotek")
                 setShowBadge(false)
             }
         )
@@ -247,7 +256,7 @@ object FileJobs {
             .setOnlyAlertOnce(true)
             .setSilent(true)
             .setContentIntent(openAppIntent(app))
-            .addAction(0, "Cancel", cancel)
+            .addAction(0, tr("Cancel", "Zrušit"), cancel)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
@@ -271,7 +280,7 @@ object FileJobs {
         Toast.makeText(app, text, Toast.LENGTH_SHORT).show()
     }
 
-    private fun plural(n: Int) = if (n == 1) "1 item" else "$n items"
+    private fun plural(n: Int) = itemsText(n)
     private fun String.cap() = replaceFirstChar { it.uppercase() }
 }
 
@@ -288,7 +297,7 @@ class FileJobService : Service() {
             FileJobs.cancelAll()
             return START_NOT_STICKY
         }
-        val n = FileJobs.current ?: FileJobs.progress(this, "Preparing…", "", 0, 0, true)
+        val n = FileJobs.current ?: FileJobs.progress(this, tr("Preparing…", "Připravuji…"), "", 0, 0, true)
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
                 startForeground(FileJobs.PROGRESS_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)

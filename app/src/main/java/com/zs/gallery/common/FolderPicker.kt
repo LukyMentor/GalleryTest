@@ -228,7 +228,7 @@ private fun Sheet(request: FolderPicker.Request) {
                 modifier = Modifier.padding(start = 20.dp, top = 14.dp)
             )
             Label(
-                request.note ?: "Choose a folder",
+                request.note ?: tr("Choose a folder", "Vyberte složku"),
                 style = AppTheme.typography.body2,
                 color = if (request.note != null) colors.error else colors.onBackground.copy(alpha = 0.65f),
                 fontWeight = if (request.note != null) FontWeight.Medium else FontWeight.Normal,
@@ -276,7 +276,7 @@ private fun NewFolderTile() {
             }
         }
         Label(
-            "New folder",
+            tr("New folder", "Nová složka"),
             style = AppTheme.typography.body2,
             fontWeight = FontWeight.Medium,
             color = colors.accent,
@@ -316,7 +316,7 @@ private fun FolderTile(folder: Folder, onClick: () -> Unit) {
             modifier = Modifier.padding(start = 4.dp, top = 6.dp)
         )
         Label(
-            if (folder.count == 1) "1 item" else "${folder.count} items",
+            itemsText(folder.count),
             style = AppTheme.typography.label3,
             color = colors.onBackground.copy(alpha = 0.6f),
             maxLines = 1,

@@ -20,6 +20,8 @@
 
 package com.zs.gallery.files
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.foundation.layout.Arrangement
@@ -333,7 +335,7 @@ fun Files(viewState: FilesViewState) {
                         // Filtered out (e.g. "Videos" chosen): show everything and try again.
                         if (viewState.filter != MediaFilter.ALL) { viewState.filter = MediaFilter.ALL; return@LaunchedEffect }
                         TimelineJump.target = null
-                        android.widget.Toast.makeText(ctx2, "This photo's folder is hidden from Photos", android.widget.Toast.LENGTH_SHORT).show()
+                        android.widget.Toast.makeText(ctx2, tr("This photo's folder is hidden from Photos", "Složka této fotky je ve Fotkách skrytá"), android.widget.Toast.LENGTH_SHORT).show()
                         return@LaunchedEffect
                     }
                     state.scrollToItem(lazy, -(state.layoutInfo.viewportSize.height / 3))

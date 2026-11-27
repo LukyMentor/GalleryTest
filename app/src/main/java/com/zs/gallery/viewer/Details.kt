@@ -18,6 +18,8 @@
 
 package com.zs.gallery.viewer
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import android.text.format.DateUtils
 import android.text.format.Formatter
 import android.view.Gravity
@@ -189,7 +191,7 @@ private fun DetailsBody(value: MediaFile) = Column(verticalArrangement = Arrange
     }
     DetailRow(
         icon = if (value.isImage) Icons.Outlined.Image else Icons.Outlined.Videocam,
-        label = "File name",
+        label = tr("File name", "Název souboru"),
         value = value.name
     )
     // Place (offline: nearest bundled city), when the photo has a location.
@@ -200,7 +202,7 @@ private fun DetailsBody(value: MediaFile) = Column(verticalArrangement = Arrange
         val navController = com.zs.gallery.common.compose.LocalNavController.current
         val scope = rememberCoroutineScope()
         place?.let {
-            DetailRow(Icons.Outlined.Place, "Location", it, onClick = {
+            DetailRow(Icons.Outlined.Place, tr("Location", "Poloha"), it, onClick = {
                 scope.launch {
                     val loc = com.zs.core.store.PhotoLocations.locationOf(context, value.id) ?: return@launch
                     com.zs.gallery.map.MapJump.target = com.zs.gallery.map.MapJump.Target(value.id, loc[0], loc[1])
@@ -218,13 +220,13 @@ private fun DetailsBody(value: MediaFile) = Column(verticalArrangement = Arrange
     val folder = value.path.substringBeforeLast("/")
     DetailRow(
         icon = Icons.Outlined.Folder,
-        label = "Folder",
+        label = tr("Folder", "Složka"),
         value = com.zs.gallery.common.FileOps.relativePathOf(folder)?.trimEnd('/')
-            ?.let { if (it.isEmpty()) "Phone" else "Phone › " + it.replace("/", " › ") } ?: folder
+            ?.let { if (it.isEmpty()) tr("Phone", "Telefon") else tr("Phone", "Telefon") + " › " + it.replace("/", " › ") } ?: folder
     )
     DetailRow(
         icon = Icons.Outlined.PhotoSizeSelectActual,
-        label = "Size",
+        label = tr("Size", "Velikost"),
         value = buildString {
             append(Formatter.formatFileSize(context, value.size))
             if (value.isImage && value.megapixels > 0)
@@ -420,7 +422,7 @@ private fun PeopleRow(mediaId: Long) {
             Icon(Icons.Outlined.Face, contentDescription = null, tint = colors.accent, modifier = Modifier.size(20.dp))
         }
         Column(Modifier.padding(start = 14.dp)) {
-            Label("People", style = AppTheme.typography.label2, color = colors.onBackground.copy(alpha = 0.6f))
+            Label(tr("People", "Lidé"), style = AppTheme.typography.label2, color = colors.onBackground.copy(alpha = 0.6f))
             Row(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier

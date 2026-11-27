@@ -10,6 +10,8 @@
 
 package com.zs.gallery.viewer
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -94,7 +96,7 @@ fun ViewerActions(
                 Box {
                     RoundButton(
                         icon = Icons.Outlined.MoreVert,
-                        contentDescription = "More actions",
+                        contentDescription = tr("More actions", "Další akce"),
                         onClick = { expanded = true }
                     )
                     DropDownMenu(

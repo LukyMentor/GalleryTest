@@ -1,5 +1,7 @@
 package com.zs.gallery.picker
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -59,27 +61,27 @@ fun PickBar() {
                 Column(Modifier.padding(end = 4.dp)) {
                     Label(
                         when {
-                            tooMany -> "Only 1 allowed here"
-                            count > 0 -> "$count selected"
-                            PickMode.multiple -> "Choose photos"
-                            PickMode.videosOnly -> "Choose a video"
-                            else -> "Choose a photo"
+                            tooMany -> tr("Only 1 allowed here", "Tady jde jen 1")
+                            count > 0 -> tr("$count selected", "Vybráno: $count")
+                            PickMode.multiple -> tr("Choose photos", "Vyberte fotky")
+                            PickMode.videosOnly -> tr("Choose a video", "Vyberte video")
+                            else -> tr("Choose a photo", "Vyberte fotku")
                         },
                         color = if (tooMany) colors.error else colors.onBackground, fontWeight = FontWeight.SemiBold
                     )
-                    val who = PickMode.caller?.let { "for $it" }
+                    val who = PickMode.caller?.let { tr("for $it", "pro $it") }
                     val sub = when {
-                        tooMany -> "${PickMode.caller ?: "This app"} takes one at a time · $count selected"
-                        !PickMode.multiple -> listOfNotNull(who, "one only").joinToString(" · ")
+                        tooMany -> tr("${PickMode.caller ?: "This app"} takes one at a time · $count selected", "${PickMode.caller ?: "Tato aplikace"} bere jen jednu · vybráno: $count")
+                        !PickMode.multiple -> listOfNotNull(who, tr("one only", "jen jedna")).joinToString(" · ")
                         else -> who
                     }
                     sub?.let {
                         Label(it, style = AppTheme.typography.label3, color = colors.onBackground.copy(alpha = 0.6f))
                     }
                 }
-                Pill("Cancel", primary = false) { PickMode.cancel() }
+                Pill(tr("Cancel", "Zrušit"), primary = false) { PickMode.cancel() }
                 if (count > 0 && !tooMany)
-                    Pill(if (PickMode.multiple) "Add ($count)" else "Add", primary = true) {
+                    Pill(if (PickMode.multiple) tr("Add ($count)", "Přidat ($count)") else tr("Add", "Přidat"), primary = true) {
                         PickMode.deliver(PickMode.selected.toList())
                     }
             }

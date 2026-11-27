@@ -10,6 +10,8 @@
 
 package com.zs.gallery.map
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import android.content.Context
 import com.zs.core.store.PhotoLocations
 import kotlinx.coroutines.Dispatchers
@@ -54,8 +56,8 @@ object Places {
             else "${city.name}, ${city.country}"
             when {
                 bestKm < 10 -> where
-                bestKm < 60 -> "Near $where"
-                else -> "${bestKm.roundToInt()} km from $where"
+                bestKm < 60 -> tr("Near $where", "Poblíž: $where")
+                else -> tr("${bestKm.roundToInt()} km from $where", "${bestKm.roundToInt()} km od: $where")
             }
         }
 

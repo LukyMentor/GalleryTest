@@ -1,5 +1,7 @@
 package com.zs.gallery.people
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import android.content.ContentUris
 import android.content.Context
 import android.provider.MediaStore
@@ -204,11 +206,11 @@ private fun ScanStatus(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         val title = when {
-            status.paused -> "Face scan paused"
+            status.paused -> tr("Face scan paused", "Hledání obličejů pozastaveno")
             status.running && status.total > 0 && status.scanned < status.total ->
-                "Scanning photos… ${"%,d".format(status.scanned)} / ${"%,d".format(status.total)}"
-            status.running -> status.note ?: "Working…"
-            else -> status.note ?: "Face scan"
+                tr("Scanning photos… ", "Prohledávám fotky… ") + "${"%,d".format(status.scanned)} / ${"%,d".format(status.total)}"
+            status.running -> status.note ?: tr("Working…", "Pracuji…")
+            else -> status.note ?: tr("Face scan", "Hledání obličejů")
         }
         Label(title, style = AppTheme.typography.body1, fontWeight = FontWeight.SemiBold, color = colors.onBackground)
         if (status.total > 0) {
@@ -218,41 +220,41 @@ private fun ScanStatus(modifier: Modifier = Modifier) {
             }
         }
         Label(
-            "${"%,d".format(status.faces)} faces · ${status.people} people" +
+            "${"%,d".format(status.faces)} ${tr("faces", "obličejů")} · ${status.people} ${tr("people", "osob")}" +
                     if (status.msPerPhoto > 0) " · ${status.msPerPhoto} ms/photo" else "",
             style = AppTheme.typography.body2, color = colors.onBackground.copy(alpha = 0.7f)
         )
         if (status.videos && status.videoTotal > 0)
             Label(
-                "Videos: ${"%,d".format(status.videoScanned)} / ${"%,d".format(status.videoTotal)}" +
+                tr("Videos: ", "Videa: ") + "${"%,d".format(status.videoScanned)} / ${"%,d".format(status.videoTotal)}" +
                         if (status.msPerVideo > 0) " · ${"%.1f".format(status.msPerVideo / 1000f)} s/video" else "",
                 style = AppTheme.typography.body2, color = colors.onBackground.copy(alpha = 0.7f)
             )
         status.error?.let { Label(it, style = AppTheme.typography.body2, color = Color(0xFFFF6B6B), maxLines = 3) }
         if (open) {
             status.current?.let {
-                Label("Now: $it", style = AppTheme.typography.label3, color = colors.onBackground.copy(alpha = 0.6f), maxLines = 1)
+                Label(tr("Now: ", "Teď: ") + it, style = AppTheme.typography.label3, color = colors.onBackground.copy(alpha = 0.6f), maxLines = 1)
             }
             Label(
-                "Runs on the phone only, while Gallery M is open (or still in memory). Experimental.",
+                tr("Runs on the phone only, while Gallery M is open (or still in memory). Experimental.", "Běží jen v telefonu, když je Gallery M otevřená (nebo ještě v paměti). Experimentální."),
                 style = AppTheme.typography.label3, color = colors.onBackground.copy(alpha = 0.6f)
             )
             Label(
-                "Videos up to 5 minutes are scanned after all photos (a frame every 2.5 s; screen recordings skipped).",
+                tr("Videos up to 5 minutes are scanned after all photos (a frame every 2.5 s; screen recordings skipped).", "Videa do 5 minut se prohledají po všech fotkách (snímek každých 2,5 s; záznamy obrazovky se přeskakují)."),
                 style = AppTheme.typography.label3, color = colors.onBackground.copy(alpha = 0.6f)
             )
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState())
             ) {
-                SmallPill(if (status.paused) "Resume" else "Pause", primary = true) {
+                SmallPill(if (status.paused) tr("Resume", "Pokračovat") else tr("Pause", "Pozastavit"), primary = true) {
                     FaceIndexer.setPaused(context, !status.paused)
                 }
-                SmallPill(if (status.videos) "Videos: on" else "Scan videos too", primary = status.videos) {
+                SmallPill(if (status.videos) tr("Videos: on", "Videa: zapnuto") else tr("Scan videos too", "Prohledat i videa"), primary = status.videos) {
                     FaceIndexer.setScanVideos(context, !status.videos)
                 }
-                SmallPill("Re-group") { FaceIndexer.regroup(context) }
-                SmallPill("Rescan all") { FaceIndexer.reset(context) }
+                SmallPill(tr("Re-group", "Přeskupit")) { FaceIndexer.regroup(context) }
+                SmallPill(tr("Rescan all", "Prohledat vše znovu")) { FaceIndexer.reset(context) }
             }
         }
     }
@@ -304,7 +306,7 @@ fun PeopleScreen() {
     ) {
         item(span = { GridItemSpan(maxLineSpan) }, key = "title") {
             Label(
-                "People",
+                tr("People", "Lidé"),
                 style = AppTheme.typography.headline2,
                 fontWeight = FontWeight.SemiBold,
                 color = colors.onBackground,
@@ -315,7 +317,7 @@ fun PeopleScreen() {
         if (people.isEmpty())
             item(span = { GridItemSpan(maxLineSpan) }, key = "empty") {
                 Label(
-                    "Faces will appear here as the scan finds them.",
+                    tr("Faces will appear here as the scan finds them.", "Obličeje se tu objeví, jak je hledání najde."),
                     style = AppTheme.typography.body2,
                     color = colors.onBackground.copy(alpha = 0.6f),
                     modifier = Modifier.padding(8.dp)
@@ -325,7 +327,7 @@ fun PeopleScreen() {
         if (rest.isNotEmpty())
             item(span = { GridItemSpan(maxLineSpan) }, key = "more") {
                 SmallRowButton(
-                    if (showAll) "Hide people with 1–2 photos" else "Show ${rest.size} more (only 1–2 photos)"
+                    if (showAll) tr("Hide people with 1–2 photos", "Skrýt lidi s 1–2 fotkami") else tr("Show ${rest.size} more (only 1–2 photos)", "Ukázat dalších ${rest.size} (jen 1–2 fotky)")
                 ) { showAll = !showAll }
             }
         if (showAll) items(rest, key = { it.id }) { person ->
@@ -333,7 +335,7 @@ fun PeopleScreen() {
         }
         if (hiddenCount > 0)
             item(span = { GridItemSpan(maxLineSpan) }, key = "hidden") {
-                SmallRowButton(if (showHidden) "Don't show hidden people" else "Show $hiddenCount hidden") {
+                SmallRowButton(if (showHidden) tr("Don't show hidden people", "Neukazovat skryté lidi") else tr("Show $hiddenCount hidden", "Ukázat skryté ($hiddenCount)")) {
                     showHidden = !showHidden
                 }
             }
@@ -366,7 +368,7 @@ private fun PersonTile(person: Person, onClick: () -> Unit) {
     ) {
         FaceAvatar(person.cover, 84.dp)
         Label(
-            person.name ?: "Add a name",
+            person.name ?: tr("Add a name", "Přidat jméno"),
             style = AppTheme.typography.body2,
             fontWeight = FontWeight.Medium,
             color = if (person.name != null) colors.onBackground else colors.onBackground.copy(alpha = 0.55f),
@@ -511,24 +513,24 @@ fun PersonScreen(id: Long) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
                             icon = Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = tr("Back", "Zpět"),
                             onClick = { navController.navigateUp() }
                         )
                         Spacer(Modifier.weight(1f))
-                        IconButton(icon = Icons.Outlined.Edit, contentDescription = "Name", onClick = {
+                        IconButton(icon = Icons.Outlined.Edit, contentDescription = tr("Name", "Jméno"), onClick = {
                             scope.launch {
-                                val name = FileOps.askText(context.findActivity(), "Name", person?.name.orEmpty(), hint = "Who is this?")
+                                val name = FileOps.askText(context.findActivity(), tr("Name", "Jméno"), person?.name.orEmpty(), hint = tr("Who is this?", "Kdo to je?"))
                                     ?: return@launch
                                 edit { store.rename(id, name) }
                             }
                         })
-                        IconButton(icon = Icons.Outlined.AccountCircle, contentDescription = "Choose picture",
+                        IconButton(icon = Icons.Outlined.AccountCircle, contentDescription = tr("Choose picture", "Vybrat fotku"),
                             onClick = { selected.clear(); pickingCover = true })
-                        IconButton(icon = Icons.Outlined.CallMerge, contentDescription = "Same person as…",
+                        IconButton(icon = Icons.Outlined.CallMerge, contentDescription = tr("Same person as…", "Stejná osoba jako…"),
                             onClick = { picker = "merge" })
                         IconButton(
                             icon = if (person?.hidden == true) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
-                            contentDescription = if (person?.hidden == true) "Show" else "Hide",
+                            contentDescription = if (person?.hidden == true) tr("Show", "Ukázat") else tr("Hide", "Skrýt"),
                             onClick = { edit { store.setHidden(id, person?.hidden != true) } }
                         )
                     }
@@ -536,13 +538,13 @@ fun PersonScreen(id: Long) {
                         FaceAvatar(person?.cover, 72.dp)
                         Column(Modifier.padding(start = 14.dp)) {
                             Label(
-                                person?.name ?: "Add a name",
+                                person?.name ?: tr("Add a name", "Přidat jméno"),
                                 style = AppTheme.typography.title1,
                                 fontWeight = FontWeight.SemiBold,
                                 color = if (person?.name != null) colors.onBackground else colors.onBackground.copy(alpha = 0.55f),
                                 modifier = Modifier.clickable {
                                     scope.launch {
-                                        val name = FileOps.askText(context.findActivity(), "Name", person?.name.orEmpty(), hint = "Who is this?")
+                                        val name = FileOps.askText(context.findActivity(), tr("Name", "Jméno"), person?.name.orEmpty(), hint = tr("Who is this?", "Kdo to je?"))
                                             ?: return@launch
                                         edit { store.rename(id, name) }
                                     }
@@ -553,12 +555,12 @@ fun PersonScreen(id: Long) {
                                     sections.values.sumOf { list -> list.count { it.isImage } },
                                     sections.values.sumOf { list -> list.count { !it.isImage } }
                                 ) +
-                                        if (person?.hidden == true) " · hidden" else "",
+                                        if (person?.hidden == true) tr(" · hidden", " · skrytá") else "",
                                 style = AppTheme.typography.body2,
                                 color = colors.onBackground.copy(alpha = 0.65f)
                             )
                             Label(
-                                "Long-press photos that aren't them to move them.",
+                                tr("Long-press photos that aren't them to move them.", "Fotky, kde nejsou, podržte a přesuňte."),
                                 style = AppTheme.typography.label3,
                                 color = colors.onBackground.copy(alpha = 0.5f)
                             )
@@ -575,9 +577,9 @@ fun PersonScreen(id: Long) {
                         .padding(horizontal = 12.dp, vertical = 2.dp)
                 ) {
                     fun pick(v: Int) { show = v; prefs.edit().putInt("person_filter", v).apply(); selected.clear() }
-                    com.zs.gallery.files.FilterChip("All  $allCount", show == SHOW_ALL) { pick(SHOW_ALL) }
-                    com.zs.gallery.files.FilterChip("Just them  ${allCount - groupCount}", show == SHOW_SINGLE) { pick(SHOW_SINGLE) }
-                    com.zs.gallery.files.FilterChip("Group photos  $groupCount", show == SHOW_GROUP) { pick(SHOW_GROUP) }
+                    com.zs.gallery.files.FilterChip(tr("All", "Vše") + "  $allCount", show == SHOW_ALL) { pick(SHOW_ALL) }
+                    com.zs.gallery.files.FilterChip(tr("Just them", "Jen on/ona") + "  ${allCount - groupCount}", show == SHOW_SINGLE) { pick(SHOW_SINGLE) }
+                    com.zs.gallery.files.FilterChip(tr("Group photos", "Skupinové") + "  $groupCount", show == SHOW_GROUP) { pick(SHOW_GROUP) }
                 }
             }
             for ((label, files) in shown) {
@@ -594,7 +596,7 @@ fun PersonScreen(id: Long) {
                 // Liked: the same yellow star as in Photos.
                 if (media in photoActions.favourites)
                     Icon(
-                        androidx.compose.material.icons.Icons.Filled.Star, contentDescription = "Favourite",
+                        androidx.compose.material.icons.Icons.Filled.Star, contentDescription = tr("Favourite", "Oblíbené"),
                         tint = Color(0xFFFFC83D),
                         modifier = Modifier
                             .align(if (file.isImage) Alignment.TopEnd else Alignment.BottomEnd)
@@ -625,7 +627,7 @@ fun PersonScreen(id: Long) {
                                         val ok = withContext(Dispatchers.IO) { store.setCover(id, media) }
                                         FaceIndexer.changed()
                                         android.widget.Toast.makeText(
-                                            context, if (ok) "Picture changed" else "No face of them in that photo",
+                                            context, if (ok) tr("Picture changed", "Fotka změněna") else tr("No face of them in that photo", "Na té fotce jejich obličej není"),
                                             android.widget.Toast.LENGTH_SHORT
                                         ).show()
                                     }
@@ -675,8 +677,8 @@ fun PersonScreen(id: Long) {
                     .background(colors.accent)
                     .padding(start = 18.dp, end = 6.dp, top = 6.dp, bottom = 6.dp)
             ) {
-                Label("Tap the photo for their picture", color = colors.onAccent, fontWeight = FontWeight.Medium)
-                SmallPill("Cancel") { pickingCover = false }
+                Label(tr("Tap the photo for their picture", "Klepněte na fotku pro profilovou fotku"), color = colors.onAccent, fontWeight = FontWeight.Medium)
+                SmallPill(tr("Cancel", "Zrušit")) { pickingCover = false }
             }
         }
         ViewerActions(
@@ -708,7 +710,7 @@ fun PersonScreen(id: Long) {
                         val ok = withContext(Dispatchers.IO) { store.setCover(id, media) }
                         FaceIndexer.changed()
                         android.widget.Toast.makeText(
-                            context, if (ok) "Picture changed" else "No face of them in that photo",
+                            context, if (ok) tr("Picture changed", "Fotka změněna") else tr("No face of them in that photo", "Na té fotce jejich obličej není"),
                             android.widget.Toast.LENGTH_SHORT
                         ).show()
                     }
@@ -737,7 +739,7 @@ fun PersonScreen(id: Long) {
         )
         PersonPicker(
             visible = picker != null,
-            title = if (picker == "merge") "Same person as…" else "Move to…",
+            title = if (picker == "merge") tr("Same person as…", "Stejná osoba jako…") else tr("Move to…", "Přesunout k…"),
             exclude = id,
             allowNew = picker == "move",
             onDismiss = { picker = null },
@@ -842,7 +844,7 @@ private fun PersonPicker(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier.size(68.dp).background(colors.accent, CircleShape)
                             ) { Icon(Icons.Outlined.PersonAdd, null, tint = colors.onAccent) }
-                            Label("New person", style = AppTheme.typography.body2, color = colors.accent,
+                            Label(tr("New person", "Nová osoba"), style = AppTheme.typography.body2, color = colors.accent,
                                 modifier = Modifier.padding(top = 6.dp))
                         }
                     }
@@ -853,7 +855,7 @@ private fun PersonPicker(
                         ) {
                             FaceAvatar(p.cover, 68.dp)
                             Label(
-                                p.name ?: "${p.photos} photos", style = AppTheme.typography.body2,
+                                p.name ?: photosText(p.photos), style = AppTheme.typography.body2,
                                 color = if (p.name != null) colors.onBackground else colors.onBackground.copy(alpha = 0.6f),
                                 maxLines = 1, modifier = Modifier.padding(top = 6.dp)
                             )

@@ -1,5 +1,7 @@
 package com.zs.gallery.people
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -161,7 +163,7 @@ private fun Sheet(mediaId: Long) {
             }
             FaceIndexer.changed()
             AddToPerson.close()
-            Toast.makeText(context, if (name != null) "Added to $name" else "Added", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, if (name != null) tr("Added to $name", "Přidáno k: $name") else tr("Added", "Přidáno"), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -175,14 +177,14 @@ private fun Sheet(mediaId: Long) {
             .windowInsetsPadding(WindowInsets.navigationBars)
     ) {
         Label(
-            "Add to person", style = AppTheme.typography.title2, fontWeight = FontWeight.SemiBold,
+            tr("Add to person", "Přidat k osobě"), style = AppTheme.typography.title2, fontWeight = FontWeight.SemiBold,
             color = colors.onBackground, modifier = Modifier.padding(start = 20.dp, top = 20.dp)
         )
         // Which face (only when there's a choice).
         run {
             Label(
-                if (faces.isEmpty()) "No face was found here - the whole photo will be added."
-                else "Which face?",
+                if (faces.isEmpty()) tr("No face was found here - the whole photo will be added.", "Nenašel se tu žádný obličej – přidá se celá fotka.")
+                else tr("Which face?", "Který obličej?"),
                 style = AppTheme.typography.body2,
                 color = colors.onBackground.copy(alpha = 0.65f),
                 modifier = Modifier.padding(start = 20.dp, top = 4.dp, bottom = 6.dp)
@@ -209,7 +211,7 @@ private fun Sheet(mediaId: Long) {
                             Modifier.border(if (chosen) 3.dp else 0.dp, if (chosen) colors.accent else Color.Transparent, CircleShape)
                         )
                         Label(
-                            name ?: if (row.personId > 0) "Unnamed" else "Unknown",
+                            name ?: if (row.personId > 0) tr("Unnamed", "Bez jména") else tr("Unknown", "Neznámý"),
                             style = AppTheme.typography.label3,
                             color = if (chosen) colors.accent else colors.onBackground.copy(alpha = 0.7f),
                             maxLines = 1,
@@ -233,13 +235,13 @@ private fun Sheet(mediaId: Long) {
                             .border(if (chosen) 3.dp else 0.dp, if (chosen) colors.accent else Color.Transparent, CircleShape)
                             .background(colors.onBackground.copy(alpha = 0.08f), CircleShape)
                     ) { Icon(Icons.Outlined.Image, null, tint = colors.onBackground.copy(alpha = 0.7f)) }
-                    Label("Other", style = AppTheme.typography.label3,
+                    Label(tr("Other", "Další"), style = AppTheme.typography.label3,
                         color = if (chosen) colors.accent else colors.onBackground.copy(alpha = 0.7f),
                         modifier = Modifier.padding(top = 3.dp))
                 }
             }
         Label(
-            "Who is it?",
+            tr("Who is it?", "Kdo to je?"),
             style = AppTheme.typography.body2,
             color = colors.onBackground.copy(alpha = 0.65f),
             modifier = Modifier.padding(start = 20.dp, top = 10.dp)
@@ -262,7 +264,7 @@ private fun Sheet(mediaId: Long) {
                         contentAlignment = Alignment.Center,
                         modifier = Modifier.size(68.dp).background(colors.accent, CircleShape)
                     ) { Icon(Icons.Outlined.PersonAdd, null, tint = colors.onAccent) }
-                    Label("New person", style = AppTheme.typography.body2, color = colors.accent,
+                    Label(tr("New person", "Nová osoba"), style = AppTheme.typography.body2, color = colors.accent,
                         modifier = Modifier.padding(top = 6.dp))
                 }
             }
@@ -273,7 +275,7 @@ private fun Sheet(mediaId: Long) {
                 ) {
                     FaceAvatar(p.cover, 68.dp)
                     Label(
-                        p.name ?: "${p.photos} photos", style = AppTheme.typography.body2,
+                        p.name ?: photosText(p.photos), style = AppTheme.typography.body2,
                         color = if (p.name != null) colors.onBackground else colors.onBackground.copy(alpha = 0.6f),
                         maxLines = 1, modifier = Modifier.padding(top = 6.dp)
                     )
@@ -308,9 +310,9 @@ private fun BatchSheet(ids: LongArray) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 16.dp)) {
             Column(Modifier.weight(1f)) {
-                Label("Add ${ids.size} photos to…", style = AppTheme.typography.title2, fontWeight = FontWeight.SemiBold,
+                Label(tr("Add ${ids.size} photos to…", "Přidat ${photosText(ids.size)} k…"), style = AppTheme.typography.title2, fontWeight = FontWeight.SemiBold,
                     color = colors.onBackground)
-                Label("Pick one or more people", style = AppTheme.typography.body2,
+                Label(tr("Pick one or more people", "Vyberte jednu nebo více osob"), style = AppTheme.typography.body2,
                     color = colors.onBackground.copy(alpha = 0.65f))
             }
             // Add
@@ -328,12 +330,12 @@ private fun BatchSheet(ids: LongArray) {
                             }
                             FaceIndexer.changed()
                             AddToPerson.close()
-                            Toast.makeText(context, "Added", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, tr("Added", "Přidáno"), Toast.LENGTH_SHORT).show()
                         }
                     }
                     .padding(horizontal = 20.dp, vertical = 10.dp)
             ) {
-                Label("Add", color = if (enabled) colors.onAccent else colors.onBackground.copy(alpha = 0.4f),
+                Label(tr("Add", "Přidat"), color = if (enabled) colors.onAccent else colors.onBackground.copy(alpha = 0.4f),
                     fontWeight = FontWeight.SemiBold)
             }
         }
@@ -357,7 +359,7 @@ private fun BatchSheet(ids: LongArray) {
                             .border(if (on) 3.dp else 0.dp, if (on) colors.onBackground else Color.Transparent, CircleShape)
                             .background(colors.accent, CircleShape)
                     ) { Icon(Icons.Outlined.PersonAdd, null, tint = colors.onAccent) }
-                    Label("New person", style = AppTheme.typography.body2, color = colors.accent,
+                    Label(tr("New person", "Nová osoba"), style = AppTheme.typography.body2, color = colors.accent,
                         modifier = Modifier.padding(top = 6.dp))
                 }
             }
@@ -382,7 +384,7 @@ private fun BatchSheet(ids: LongArray) {
                             }
                     }
                     Label(
-                        p.name ?: "${p.photos} photos", style = AppTheme.typography.body2,
+                        p.name ?: photosText(p.photos), style = AppTheme.typography.body2,
                         color = if (p.name != null) colors.onBackground else colors.onBackground.copy(alpha = 0.6f),
                         maxLines = 1, modifier = Modifier.padding(top = 6.dp)
                     )

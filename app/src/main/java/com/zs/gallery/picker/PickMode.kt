@@ -1,5 +1,7 @@
 package com.zs.gallery.picker
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import android.app.Activity
 import android.content.ClipData
 import android.content.ContentUris
@@ -59,7 +61,7 @@ object PickMode {
         val a = activity ?: return
         val video = isVideo(a, id) ?: return
         if ((imagesOnly && video) || (videosOnly && !video)) {
-            Toast.makeText(a, if (imagesOnly) "Choose a photo" else "Choose a video", Toast.LENGTH_SHORT).show()
+            Toast.makeText(a, if (imagesOnly) tr("Choose a photo", "Vyberte fotku") else tr("Choose a video", "Vyberte video"), Toast.LENGTH_SHORT).show()
             return
         }
         if (multiple) {

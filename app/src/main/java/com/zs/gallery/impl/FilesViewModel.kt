@@ -18,6 +18,8 @@
 
 package com.zs.gallery.impl
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.text.format.DateUtils
@@ -128,13 +130,13 @@ class FilesViewModel(
             SOURCE_FAV -> Icons.Outlined.FavoriteBorder to getText(R.string.favourites)
             SOURCE_TIMELINE -> null to getText(R.string.timeline)
             SOURCE_PICK -> Icons.Outlined.DriveFileMove to
-                    "Add to ${arg.orEmpty().trimEnd('/').substringAfterLast('/')}"
+                    tr("Add to ", "Přidat do ") + arg.orEmpty().trimEnd('/').substringAfterLast('/')
             else -> Icons.TwoTone.FolderCopy to buildAnnotatedString {
                 // Folder name, with where it is underneath (readable in light and dark mode).
                 append(PathUtils.name(arg!!).ellipsize(40))
                 val parent = PathUtils.parent(arg)
                 val where = com.zs.gallery.common.FileOps.relativePathOf(parent)
-                    ?.trimEnd('/')?.let { if (it.isEmpty()) "Phone" else "Phone › ${it.replace("/", " › ")}" }
+                    ?.trimEnd('/')?.let { if (it.isEmpty()) tr("Phone", "Telefon") else tr("Phone", "Telefon") + " › ${it.replace("/", " › ")}" }
                     ?: parent
                 val dim = if (com.zs.gallery.common.FileOps.darkTheme) Color(0xFFB9B9C6) else Color(0xFF5E5E6A)
                 withStyle(ParagraphStyle(lineHeight = 14.sp)) {
@@ -193,12 +195,12 @@ class FilesViewModel(
     private fun sizeGroup(bytes: Long): String {
         val mb = bytes / (1024.0 * 1024.0)
         return when {
-            mb >= 100 -> "Over 100 MB"
+            mb >= 100 -> tr("Over 100 MB", "Přes 100 MB")
             mb >= 25 -> "25 – 100 MB"
             mb >= 10 -> "10 – 25 MB"
             mb >= 5 -> "5 – 10 MB"
             mb >= 1 -> "1 – 5 MB"
-            else -> "Under 1 MB"
+            else -> tr("Under 1 MB", "Pod 1 MB")
         }
     }
 
@@ -495,7 +497,7 @@ class FilesViewModel(
                 .collect { favouriteIds = it }
         }
         if (source == SOURCE_PICK)
-            showPlatformToast("Tap photos to select them, then Move here or Copy here")
+            showPlatformToast(tr("Tap photos to select them, then Move here or Copy here", "Klepnutím vyberte fotky, pak Přesunout sem nebo Kopírovat sem"))
         provider.observer(MediaProvider.EXTERNAL_CONTENT_URI)
             .debounceAfterFirst(300)
             .let { stream ->

@@ -10,6 +10,8 @@
 
 package com.zs.gallery.map
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -216,9 +218,9 @@ fun MapScreen() {
                 val (done, total) = progress
                 Label(
                     text = when {
-                        !granted -> "Map"
-                        scanning && total > 0 -> "Finding places… $done / $total"
-                        else -> "${photos.size} photos with a location"
+                        !granted -> tr("Map", "Mapa")
+                        scanning && total > 0 -> tr("Finding places… $done / $total", "Hledám místa… $done / $total")
+                        else -> tr("${photos.size} photos with a location", "${photosText(photos.size)} s polohou")
                     },
                     fontWeight = FontWeight.Medium
                 )
@@ -238,12 +240,12 @@ fun MapScreen() {
                     val on = if (folder != null) colors.onAccent else colors.onBackground
                     Icon(Icons.Outlined.Folder, null, tint = on, modifier = Modifier.size(18.dp))
                     Label(
-                        folder?.substringAfterLast('/') ?: "All photos",
+                        folder?.substringAfterLast('/') ?: tr("All photos", "Všechny fotky"),
                         color = on, fontWeight = FontWeight.Medium, maxLines = 1,
                         modifier = Modifier.padding(start = 8.dp)
                     )
                     if (folder != null)
-                        IconButton(icon = Icons.Outlined.Close, contentDescription = "All photos",
+                        IconButton(icon = Icons.Outlined.Close, contentDescription = tr("All photos", "Všechny fotky"),
                             onClick = { folder = null; dayIndex = -1; selectedIds = null }, tint = on)
                     else
                         Icon(Icons.Outlined.ArrowDropDown, null, tint = on, modifier = Modifier.size(20.dp))
@@ -264,7 +266,7 @@ fun MapScreen() {
         ) {
             Icon(
                 if (showPhotos) Icons.Outlined.HideImage else Icons.Outlined.Image,
-                contentDescription = if (showPhotos) "Hide photos" else "Show photos",
+                contentDescription = if (showPhotos) tr("Hide photos", "Skrýt fotky") else tr("Show photos", "Ukázat fotky"),
                 tint = if (showPhotos) colors.onBackground else colors.onAccent,
                 modifier = Modifier.size(22.dp)
             )
@@ -286,7 +288,7 @@ fun MapScreen() {
                     modifier = Modifier.size(40.dp))
                 Spacer(Modifier.size(12.dp))
                 Label(
-                    "Allow access to photo locations to see them on the map. Tap to allow.",
+                    tr("Allow access to photo locations to see them on the map. Tap to allow.", "Povolte přístup k poloze fotek, ať je vidíte na mapě. Klepnutím povolíte."),
                     maxLines = 3
                 )
             }
@@ -341,7 +343,7 @@ fun MapScreen() {
                     .padding(horizontal = 26.dp, vertical = 13.dp)
             ) {
                 Label(
-                    "Photos in this area",
+                    tr("Photos in this area", "Fotky v této oblasti"),
                     color = if (dark) Color.White else Color(0xFF1B1B21),
                     fontWeight = FontWeight.Medium
                 )
@@ -415,7 +417,7 @@ private fun placeTitle(cluster: PhotoCluster): String {
         val lon = cluster.photos.map { it.longitude }.average()
         value = Places.describe(context, lat, lon)
     }
-    val photosLabel = if (count == 1) "1 photo" else "$count photos"
+    val photosLabel = photosText(count)
     return place?.let { "$it · $photosLabel" } ?: photosLabel
 }
 
@@ -445,7 +447,7 @@ private fun PlaceGrid(
                 maxLines = 2,
                 modifier = Modifier.weight(1f)
             )
-            IconButton(icon = Icons.Outlined.CloseFullscreen, contentDescription = "Back to map", onClick = onCollapse)
+            IconButton(icon = Icons.Outlined.CloseFullscreen, contentDescription = tr("Back to map", "Zpět na mapu"), onClick = onCollapse)
         }
         androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
             columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(100.dp),
@@ -508,8 +510,8 @@ private fun PlaceStrip(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
             )
-            IconButton(icon = Icons.Outlined.OpenInFull, contentDescription = "Show all", onClick = onExpand)
-            IconButton(icon = Icons.Outlined.Close, contentDescription = "Close", onClick = onDismiss)
+            IconButton(icon = Icons.Outlined.OpenInFull, contentDescription = tr("Show all", "Ukázat vše"), onClick = onExpand)
+            IconButton(icon = Icons.Outlined.Close, contentDescription = tr("Close", "Zavřít"), onClick = onDismiss)
         }
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -602,25 +604,25 @@ private fun DaySlider(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 if (index < 0) {
-                    Label("All days", fontWeight = FontWeight.SemiBold, color = colors.onBackground)
+                    Label(tr("All days", "Všechny dny"), fontWeight = FontWeight.SemiBold, color = colors.onBackground)
                     Label(
-                        "${days.size} days · ${days.sumOf { it.size }} photos",
+                        tr("${days.size} days", "Dní: ${days.size}") + " · " + photosText(days.sumOf { it.size }),
                         style = AppTheme.typography.label3, color = colors.onBackground.copy(alpha = 0.65f)
                     )
                 } else {
                     val day = days[index]
                     Label(
-                        "Day ${index + 1} · " + java.text.SimpleDateFormat("EEE d MMM yyyy", java.util.Locale.getDefault())
+                        tr("Day ${index + 1} · ", "Den ${index + 1} · ") + java.text.SimpleDateFormat("EEE d MMM yyyy", java.util.Locale.getDefault())
                             .format(java.util.Date(day.first().date)),
                         fontWeight = FontWeight.SemiBold, color = colors.onBackground
                     )
                     Label(
-                        if (day.size == 1) "1 photo" else "${day.size} photos",
+                        photosText(day.size),
                         style = AppTheme.typography.label3, color = colors.onBackground.copy(alpha = 0.65f)
                     )
                 }
             }
-            com.zs.gallery.files.FilterChip("All", index < 0) { onIndex(-1) }
+            com.zs.gallery.files.FilterChip(tr("All", "Vše"), index < 0) { onIndex(-1) }
         }
         // Bars: one per day; the chosen one in the accent colour.
         androidx.compose.foundation.Canvas(
@@ -701,7 +703,7 @@ private fun FolderPickerSheet(
                 .clickable(remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null, onClick = {})
                 .windowInsetsPadding(WindowInsets.navigationBars)
         ) {
-            Label("Show a folder", style = AppTheme.typography.title2, fontWeight = FontWeight.SemiBold,
+            Label(tr("Show a folder", "Ukázat složku"), style = AppTheme.typography.title2, fontWeight = FontWeight.SemiBold,
                 color = colors.onBackground, modifier = Modifier.padding(start = 20.dp, top = 20.dp))
             // Search.
             Row(
@@ -716,7 +718,7 @@ private fun FolderPickerSheet(
                 Icon(Icons.Outlined.Search, null, tint = colors.onBackground.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
                 Box(Modifier.padding(start = 10.dp).weight(1f)) {
                     if (query.isEmpty())
-                        Label("Search folders", color = colors.onBackground.copy(alpha = 0.5f))
+                        Label(tr("Search folders", "Hledat složky"), color = colors.onBackground.copy(alpha = 0.5f))
                     androidx.compose.foundation.text.BasicTextField(
                         value = query,
                         onValueChange = { query = it },
@@ -751,7 +753,7 @@ private fun FolderPickerSheet(
                         Column(Modifier.padding(start = 14.dp)) {
                             Label(path.substringAfterLast('/'), fontWeight = FontWeight.Medium, color = colors.onBackground, maxLines = 1)
                             Label(
-                                if (count == 1) "1 photo with a location" else "$count photos with a location",
+                                tr(if (count == 1) "1 photo with a location" else "$count photos with a location", "${photosText(count)} s polohou"),
                                 style = AppTheme.typography.label3, color = colors.onBackground.copy(alpha = 0.6f)
                             )
                         }

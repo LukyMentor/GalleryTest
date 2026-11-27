@@ -18,6 +18,8 @@
 
 package com.zs.gallery
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
@@ -539,7 +541,7 @@ private fun NavigationBar(
 
         // People (experimental): faces found in the photos.
         AnimatedNavItem(
-            label = "People",
+            label = tr("People", "Lidé"),
             icon = Icons.Filled.Face,
             selected = primary == com.zs.gallery.people.RoutePeople.domain,
             onClick = { navController.toRoute(com.zs.gallery.people.RoutePeople) },
@@ -548,7 +550,7 @@ private fun NavigationBar(
 
         // Map: where photos were taken.
         AnimatedNavItem(
-            label = "Map",
+            label = tr("Map", "Mapa"),
             icon = Icons.Filled.Public,
             selected = primary == RouteMap.domain,
             onClick = { navController.toRoute(RouteMap) },

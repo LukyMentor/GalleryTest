@@ -1,5 +1,7 @@
 package com.zs.gallery.crop
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import android.app.Activity
 import android.content.ContentUris
 import android.content.ContentValues
@@ -130,8 +132,8 @@ private const val BOTTOM = 8
 private const val MOVE = 16
 
 /** Free plus a few common shapes; the value is width / height (0 = free). */
-private val Ratios = listOf(
-    "Free" to 0f, "1:1" to 1f, "4:3" to 4f / 3f, "3:4" to 3f / 4f,
+private val Ratios get() = listOf(
+    tr("Free", "Volně") to 0f, "1:1" to 1f, "4:3" to 4f / 3f, "3:4" to 3f / 4f,
     "16:9" to 16f / 9f, "9:16" to 9f / 16f,
 )
 
@@ -292,9 +294,9 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
             Toast.makeText(
                 context,
                 when {
-                    !ok -> "Couldn't save the photo"
-                    replace -> "Saved"
-                    else -> "Saved a copy"
+                    !ok -> tr("Couldn't save the photo", "Fotku se nepodařilo uložit")
+                    replace -> tr("Saved", "Uloženo")
+                    else -> tr("Saved a copy", "Uložena kopie")
                 },
                 Toast.LENGTH_SHORT
             ).show()
@@ -313,7 +315,7 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
             IconButton(
                 icon = Icons.Outlined.Close,
-                contentDescription = "Cancel",
+                contentDescription = tr("Cancel", "Zrušit"),
                 onClick = { leave() },
                 tint = Color.White
             )
@@ -322,13 +324,13 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
                 horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
                 modifier = Modifier.weight(1f)
             ) {
-                Pill("Crop", selected = !drawMode) { drawMode = false }
-                Pill("Draw", selected = drawMode) { drawMode = true }
+                Pill(tr("Crop", "Oříznout"), selected = !drawMode) { drawMode = false }
+                Pill(tr("Draw", "Kreslit"), selected = drawMode) { drawMode = true }
             }
             if (drawMode)
                 IconButton(
                     icon = Icons.AutoMirrored.Outlined.Undo,
-                    contentDescription = "Undo",
+                    contentDescription = tr("Undo", "Zpět"),
                     enabled = marks.isNotEmpty(),
                     onClick = { if (marks.isNotEmpty()) marks.removeAt(marks.lastIndex) },
                     tint = if (marks.isNotEmpty()) Color.White else Color.White.copy(alpha = 0.35f)
@@ -336,7 +338,7 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
             else
                 IconButton(
                     icon = Icons.Outlined.RestartAlt,
-                    contentDescription = "Reset",
+                    contentDescription = tr("Reset", "Obnovit"),
                     onClick = { ratio = 0f; crop = Rect(0f, 0f, 1f, 1f) },
                     tint = Color.White
                 )
@@ -526,7 +528,7 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
         // Rotate + shapes (crop) or tools + colours (draw).
         if (drawMode && tool == Tool.TEXT && marks.none { it.tool == Tool.TEXT })
             Label(
-                "Tap the photo where the text should go",
+                tr("Tap the photo where the text should go", "Klepněte na fotku tam, kde má být text"),
                 color = Color.White.copy(alpha = 0.7f),
                 style = AppTheme.typography.label3,
                 modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp)
@@ -540,17 +542,17 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
                 .padding(horizontal = 16.dp, vertical = 4.dp)
         ) {
             if (!drawMode) {
-                ToolButton(Icons.Outlined.RotateLeft, "Rotate left", false) { turn(clockwise = false) }
-                ToolButton(Icons.Outlined.RotateRight, "Rotate right", false) { turn(clockwise = true) }
+                ToolButton(Icons.Outlined.RotateLeft, tr("Rotate left", "Otočit doleva"), false) { turn(clockwise = false) }
+                ToolButton(Icons.Outlined.RotateRight, tr("Rotate right", "Otočit doprava"), false) { turn(clockwise = true) }
                 Spacer(Modifier.size(width = 6.dp, height = 1.dp))
                 for ((label, value) in Ratios)
                     Pill(label, selected = ratio == value, onClick = { applyRatio(value) })
             }
             else {
-                ToolButton(Icons.Outlined.NorthEast, "Arrow", tool == Tool.ARROW) { tool = Tool.ARROW }
-                ToolButton(Icons.Outlined.Gesture, "Pen", tool == Tool.PEN) { tool = Tool.PEN }
-                ToolButton(Icons.Outlined.BorderColor, "Highlighter", tool == Tool.HIGHLIGHTER) { tool = Tool.HIGHLIGHTER }
-                ToolButton(Icons.Outlined.TextFields, "Text", tool == Tool.TEXT) { tool = Tool.TEXT }
+                ToolButton(Icons.Outlined.NorthEast, tr("Arrow", "Šipka"), tool == Tool.ARROW) { tool = Tool.ARROW }
+                ToolButton(Icons.Outlined.Gesture, tr("Pen", "Pero"), tool == Tool.PEN) { tool = Tool.PEN }
+                ToolButton(Icons.Outlined.BorderColor, tr("Highlighter", "Zvýrazňovač"), tool == Tool.HIGHLIGHTER) { tool = Tool.HIGHLIGHTER }
+                ToolButton(Icons.Outlined.TextFields, tr("Text", "Text"), tool == Tool.TEXT) { tool = Tool.TEXT }
                 // Changing size / colour right after placing a text changes that text too.
                 fun restyle() {
                     val i = lastText
@@ -580,11 +582,11 @@ fun CropScreen(uri: Uri, external: Boolean = false) {
         ) {
             // Copy on the left (secondary); replacing the original is the main action on the right.
             val canReplace = source?.canReplace != false
-            Pill(if (saving && !canReplace) "Saving…" else "Save copy", selected = !canReplace, big = true, modifier = Modifier.weight(1f)) {
+            Pill(if (saving && !canReplace) tr("Saving…", "Ukládám…") else tr("Save copy", "Uložit kopii"), selected = !canReplace, big = true, modifier = Modifier.weight(1f)) {
                 save(replace = false)
             }
             if (canReplace)
-                Pill(if (saving) "Saving…" else "Replace original", selected = true, big = true, modifier = Modifier.weight(1f)) {
+                Pill(if (saving) tr("Saving…", "Ukládám…") else tr("Replace original", "Nahradit originál"), selected = true, big = true, modifier = Modifier.weight(1f)) {
                     save(replace = true)
                 }
         }
@@ -653,7 +655,7 @@ private fun TextEntry(
                 Box(contentAlignment = Alignment.Center) {
                     if (value.text.isEmpty())
                         androidx.compose.foundation.text.BasicText(
-                            "Type something",
+                            tr("Type something", "Napište něco"),
                             style = androidx.compose.ui.text.TextStyle(
                                 color = Color.White.copy(alpha = 0.4f), fontSize = 30.sp, fontWeight = FontWeight.Bold
                             )
@@ -669,10 +671,10 @@ private fun TextEntry(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            Pill("Cancel", selected = false, big = true, modifier = Modifier.weight(1f), onClick = onCancel)
+            Pill(tr("Cancel", "Zrušit"), selected = false, big = true, modifier = Modifier.weight(1f), onClick = onCancel)
             if (canDelete)
-                Pill("Delete", selected = false, big = true, modifier = Modifier.weight(1f), onClick = onDelete)
-            Pill("Done", selected = true, big = true, modifier = Modifier.weight(1f)) { onDone(value.text) }
+                Pill(tr("Delete", "Smazat"), selected = false, big = true, modifier = Modifier.weight(1f), onClick = onDelete)
+            Pill(tr("Done", "Hotovo"), selected = true, big = true, modifier = Modifier.weight(1f)) { onDone(value.text) }
         }
     }
 }

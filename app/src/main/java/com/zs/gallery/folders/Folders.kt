@@ -18,6 +18,8 @@
 
 package com.zs.gallery.folders
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -156,7 +158,7 @@ fun Folders(viewState: FoldersViewState) {
                     val scope = rememberCoroutineScope()
                     IconButton(
                         icon = Icons.Outlined.CreateNewFolder,
-                        contentDescription = "New folder",
+                        contentDescription = tr("New folder", "Nová složka"),
                         onClick = {
                             scope.launch {
                                 val activity = ctx.findActivity()
@@ -214,8 +216,8 @@ fun Folders(viewState: FoldersViewState) {
                             .horizontalScroll(rememberScrollState())
                             .padding(top = CP.normal, bottom = CP.small)
                     ) {
-                        FilterChip("Name", byName) { viewState.filter(ascending, nameOrder) }
-                        FilterChip("Recent", !byName) { viewState.filter(ascending, dateOrder) }
+                        FilterChip(tr("Name", "Název"), byName) { viewState.filter(ascending, nameOrder) }
+                        FilterChip(tr("Recent", "Nedávné"), !byName) { viewState.filter(ascending, dateOrder) }
                         // Divider between "by what" and "which way".
                         Box(
                             Modifier
@@ -228,8 +230,8 @@ fun Folders(viewState: FoldersViewState) {
                             FilterChip("A–Z", ascending) { viewState.filter(true, order) }
                             FilterChip("Z–A", !ascending) { viewState.filter(false, order) }
                         } else {
-                            FilterChip("Newest", !ascending) { viewState.filter(false, order) }
-                            FilterChip("Oldest", ascending) { viewState.filter(true, order) }
+                            FilterChip(tr("Newest", "Nejnovější"), !ascending) { viewState.filter(false, order) }
+                            FilterChip(tr("Oldest", "Nejstarší"), ascending) { viewState.filter(true, order) }
                         }
                     }
                 }
@@ -277,7 +279,7 @@ fun Folders(viewState: FoldersViewState) {
                                 if (isHidden)
                                     Icon(
                                         Icons.Outlined.VisibilityOff,
-                                        contentDescription = "Hidden from Photos",
+                                        contentDescription = tr("Hidden from Photos", "Skryto ve Fotkách"),
                                         tint = AppTheme.colors.onBackground,
                                         modifier = Modifier
                                             .align(Alignment.TopEnd)
@@ -287,7 +289,7 @@ fun Folders(viewState: FoldersViewState) {
                                 if (isPinned)
                                     Icon(
                                         Icons.Outlined.PushPin,
-                                        contentDescription = "Pinned",
+                                        contentDescription = tr("Pinned", "Připnuto"),
                                         tint = AppTheme.colors.accent,
                                         modifier = Modifier
                                             .align(Alignment.TopStart)
@@ -296,7 +298,7 @@ fun Folders(viewState: FoldersViewState) {
                                     )
                                 DropDownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                     DropDownMenuItem(
-                                        title = if (isPinned) "Unpin" else "Pin to top",
+                                        title = if (isPinned) tr("Unpin", "Odepnout") else tr("Pin to top", "Připnout nahoru"),
                                         icon = Icons.Outlined.PushPin,
                                         onClick = {
                                             menu = false
@@ -304,7 +306,7 @@ fun Folders(viewState: FoldersViewState) {
                                         }
                                     )
                                     DropDownMenuItem(
-                                        title = if (isHidden) "Show in Photos" else "Hide from Photos",
+                                        title = if (isHidden) tr("Show in Photos", "Ukazovat ve Fotkách") else tr("Hide from Photos", "Skrýt ve Fotkách"),
                                         icon = if (isHidden) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
                                         onClick = {
                                             menu = false

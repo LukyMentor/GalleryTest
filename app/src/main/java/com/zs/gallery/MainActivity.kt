@@ -20,6 +20,8 @@
 
 package com.zs.gallery
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_STRONG
@@ -607,7 +609,7 @@ open class MainActivity : ComponentActivity(), SystemFacade, NavDestListener {
             if (com.zs.gallery.common.CrashLog.consumeUnseen(this))
                 android.widget.Toast.makeText(
                     this,
-                    "Gallery M crashed last time. Details: Settings → Crash log",
+                    tr("Gallery M crashed last time. Details: Settings → Crash log", "Gallery M minule spadla. Podrobnosti: Nastavení → Záznam o pádech"),
                     android.widget.Toast.LENGTH_LONG
                 ).show()
         }

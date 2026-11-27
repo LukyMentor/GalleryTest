@@ -17,6 +17,8 @@
  */
 package com.zs.gallery.files
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import android.text.format.DateUtils
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -161,7 +163,7 @@ fun MediaFile(
         if (favourite)
             Icon(
                 imageVector = Icons.Filled.Star,
-                contentDescription = "Favourite",
+                contentDescription = tr("Favourite", "Oblíbené"),
                 tint = Color(0xFFFFC83D),
                 modifier = Modifier
                     .align(if (value.isImage) Alignment.TopEnd else Alignment.BottomEnd)

@@ -1,20 +1,235 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
-    <!--
-    Naming convention for string resources:
-     - The string can be styled following the rules of styling without CDATA, as the toolkit does not support CDATA.
-     - The string resources should be named as follows:
-       1. If the string is simple, like Delete, its name should be R.string.delete.
-       2. If the string contains complex text, the name should be in this format: screen_name_purpose_variables
-          (optional; if no variables, omit this). For example, timeline_scr_items_d
-       3. General message (snackbar) messages should be named as msg_add_to_playlist_error_s (optional).
-          The message can be styled as bold or experimental, like alpha superscript. The message
-          can have any length.
-       4. Snackbar messages that belong to a specific screen should be named as msg_screen_name_s
-          (optional). E.g., msg_preference_permission_s
-       5. The snackbar message should have this structure: Title\n bold + experimental + message.
-          The string resources should follow the above rules strictly
-     -->
-    <!--E.g., Facebook \n 306 Files - 24.42MB-->
-    <!--returns a string with multiplied x e.g., 1.3x-->
+    <string name="permission_scr_title">Přístup k úložišti</string>
+    <string name="allow">Povolit</string>
+    <string name="permission_scr_desc"><b>Galerie</b> potřebuje přístup k úložišti zařízení,
+        aby mohla zobrazit fotky a videa.
+        <b>\n\nAndroid 14 a novější:</b>
+        <font color='grey'>
+            \n  1. V dialogu oprávnění zvolte <b>Povolit vše</b>, aby aplikace fungovala správně.
+        </font>
+    </string>
+    <string name="photos">Fotky</string>
+    <string name="settings">Nastavení</string>
+    <string name="folders">Složky</string>
+    <string name="loading">Načítání</string>
+    <string name="oops_empty">Tady nic není!</string>
+    <string name="folders_scr_folder_name_sds">%1$d souborů – %2$s</string>
+    <string name="size">Velikost</string>
+    <string name="name">Název</string>
+    <string name="recent">Nedávné</string>
+    <string name="dark">Tmavý</string>
+    <string name="light">Světlý</string>
+    <string name="sync_with_system">Podle systému</string>
+    <string name="general">Obecné</string>
+    <string name="appearance">Vzhled</string>
+    <string name="feedback">Zpětná vazba</string>
+    <string name="about_gallery">O aplikaci</string>
+
+    <string name="msg_unknown_error">Něco se pokazilo. Došlo k neznámé chybě.</string>
+    <string name="report">Nahlásit</string>
+    <string name="timeline">Fotky</string>
+    <string name="files_source_folder_title_s">123%1$s</string>
+    <string name="files_selected_d">Vybráno: %1$d</string>
+    <string name="select_all">Vybrat vše</string>
+    <string name="bin">Koš</string>
+    <string name="recycle_bin">Koš</string>
+    <string name="favourites">Oblíbené</string>
+
+    <string name="times_factor_x_f">%1$sx</string>
+    <string name="last_modified">Naposledy změněno</string>
+    <string name="msg_error_sharing_files">Při sdílení souborů se něco pokazilo. Zkuste to znovu.</string>
+    <string name="msg_files_delete_unknown_error">Při mazání souborů se něco pokazilo. Zkuste to znovu.</string>
+    <string name="msg_files_trash_unknown_error">Při přesunu do koše se něco pokazilo. Zkuste to znovu.</string>
+    <string name="trash">Koš</string>
+
+    <string name="msg_files_restore_unknown_error">Při obnovování souborů se něco pokazilo. Zkuste to znovu.</string>
+    <string name="share">Sdílet</string>
+    <string name="edit">Upravit</string>
+    <string name="delete">Smazat</string>
+    <string name="move_to">Přesunout do…</string>
+    <string name="copy_to">Kopírovat do…</string>
+    <string name="rename">Přejmenovat</string>
+    <string name="show_in_photos">Ukázat ve Fotkách</string>
+    <string name="add_to_person">Přidat k osobě</string>
+    <string name="mark_group_photo">Skupinová fotka</string>
+    <string name="mark_just_them">Jen on/ona</string>
+    <string name="move_to_person">Přesunout k osobě</string>
+    <string name="not_this_person">Není to tato osoba</string>
+    <string name="use_as_their_picture">Použít jako profilovou fotku</string>
+    <string name="crop">Upravit</string>
+    <string name="rotate_left">Otočit doleva</string>
+    <string name="rotate_right">Otočit doprava</string>
+    <string name="move_here">Přesunout sem</string>
+    <string name="copy_here">Kopírovat sem</string>
+    <string name="info">Info</string>
+    <string name="edit_in">Upravit v jiné aplikaci</string>
+    <string name="use_as">Použít jako</string>
+    <string name="set_as_wallpaper">Nastavit jako tapetu</string>
+    <string name="like">Oblíbit</string>
+    <string name="unlike">Zrušit oblíbení</string>
+    <string name="details">Podrobnosti</string>
+    <string name="title">Název</string>
+    <string name="path">Umístění</string>
+    <string name="metadata">Metadata</string>
+    <string name="msg_files_confirm_deletion"><b>Smazat</b>
+        <font color='grey'>\nOpravdu to chcete smazat? Už to nepůjde vrátit.
+        </font>
+    </string>
+    <string name="msg_update_check_error">Při hledání aktualizací se něco pokazilo.</string>
+    <string name="msg_update_not_available">Vše je aktuální.</string>
+    <string name="msg_new_update_downloaded">Aktualizace je připravená k instalaci.</string>
+    <string name="install">Instalovat</string>
+
+    <string name="lock_scr_title">Ověřte svou totožnost</string>
+    <string name="lock_scr_subtitle">Ověření biometrikou</string>
+    <string name="lock_scr_desc">Pro pokračování se ověřte otiskem prstu nebo obličejem.
+        Chrání to vaše fotky.
+    </string>
+    <string name="msg_enroll_biometric">Zapněte biometrické ověření v nastavení.</string>
+
+    <string name="msg_favourites_updated">Oblíbené upraveny</string>
+    <string name="msg_media_player_promotion"><b>Nový přehrávač médií!</b>
+        <font color='gray'>\n🎶 Vyzkoušejte náš nový <b>přehrávač</b> hudby a videí. 🎥
+        </font>
+    </string>
+    <string name="get">Získat</string>
+
+    <string name="dismiss">Zavřít</string>
+    <string name="msg_auth_failed">Ověření selhalo. Zkuste to znovu nebo použijte jiný způsob.</string>
+    <string name="msg_auth_error_s">Chyba ověření: %1$s</string>
+    <string name="restore">Obnovit</string>
+    <string name="empty_bin">Vysypat koš</string>
+    <string name="files_d">Souborů: %1$s</string>
+    <string name="viewer_msg_no_wallpaper_app_found">Nenašla se žádná aplikace pro tapety.</string>
+    <string name="viewer_set_as">Nastavit jako</string>
+    <string name="today">Dnes</string>
+    <string name="trash_one_day_left">Zbývá 1 den</string>
+    <string name="trash_days_left_d">Zbývá dní: %1$s</string>
+    <string name="auth_confirm_biometric">Potvrďte biometrikou</string>
+
+    <string name="pref_app_theme_s"><b>Motiv aplikace (%1$s)</b>
+        <font color="grey" size="14">
+            \nTmavý, světlý nebo podle systému.
+        </font>
+    </string>
+
+    <string name="pref_immersive_view"><b>Celá obrazovka</b>
+        <font color="grey" size="14">
+            \nSkrýt stavový a navigační panel při prohlížení.
+        </font>
+    </string>
+
+    <string name="pref_enable_trash_can"><b>Koš (Android 11+)</b>
+          <font color="grey" size="14">
+              \nSmazané soubory se přesunou do koše místo trvalého smazání.
+          </font>
+    </string>
+
+    <string name="pref_grid_item_size_multiplier"><b>Velikost mřížky</b>
+          <font color="grey" size="14">
+              \nJak velké jsou náhledy v mřížce.
+          </font>
+    </string>
+
+    <string name="pref_colorization_strategy"><b>Automatické barvy <sup><font color='#ae1c27' size='10'><b>Beta</b></font></sup></b>
+         <font color="grey" size="14">
+             \nBarvy aplikace podle právě zobrazené fotky.
+          </font>
+    </string>
+
+    <string name="pref_privacy_policy"><b>Zásady ochrany soukromí</b>
+           <font color="grey" size="14">
+               \nKlepnutím zobrazíte zásady.
+          </font>
+    </string>
+
+    <string name="pref_live_gallery"><b>Živá galerie</b>
+           <font color="grey" size="14">
+               \nAnimace a automatické přehrávání videí v galerii.
+          </font></string>
+    <string name="pref_font_scale"><b>Velikost písma</b>
+         <font color="grey" size="14">
+            \nZvětšete nebo zmenšete písmo, aby se vám dobře četlo.
+        </font>
+    </string>
+
+    <string name="pref_transparent_system_bars"><b>Systémové panely</b>
+        <font color="grey" size="14">
+            \nPrůhledné systémové panely přes celý displej <b><i>\n(Android 6.0+)</i></b>
+        </font>
+    </string>
+
+    <string name="pref_report_an_issue"><b>Nahlásit problém</b>
+        <font color="grey" size="14">
+           \nNapište nám kvůli pomoci nebo chybě
+        </font>
+    </string>
+
+    <string-array name="pref_night_mode_entries">
+        <item>Tmavý</item>
+        <item>Světlý</item>
+        <item>Podle systému</item>
+    </string-array>
+    <string name="version">Verze</string>
+    <string name="version_info_s">Verze: %1$s</string>
+    <string name="pref_secure_mode"><b>Bezpečný režim</b>
+        <font color="grey" size="14">
+           \nSkryje obsah aplikace v přehledu spuštěných aplikací.
+        </font>
+    </string>
+
+    <string name="pref_app_lock_s"><b>Zámek aplikace</b> (<small>%1$s</small>)<sup><font color='#ae1c27' size='10'><b> Beta</b></font></sup>
+          <font color="grey" size="14">
+              \nZamknout galerii otiskem prstu.
+        </font>
+    </string>
+
+    <string name="pref_color_nav_bar"><b>Barevný navigační panel</b><font color="grey" size="14">\nPoužít barvu zvýraznění v navigačním panelu.
+        </font>
+    </string>
+    <string name="about_us">O nás</string>
+    <string name="postfix_x_f">%1$.1fx</string>
+    <string name="system">Systém</string>
+    <string name="join_the_beta">Přidat se k betě</string>
+    <string name="update_gallery">Aktualizovat</string>
+    <string name="rate_us">Ohodnotit</string>
+    <string name="share_app_label">Sdílet s přáteli</string>
+    <string name="pref_dynamic_colors"><b>Dynamické barvy</b>\n<font color="grey" size="14">Barvy podle tapety. Jen na <b>Androidu 12</b> a novějším.
+        </font>
+    </string>
+    <string name="error">Chyba</string>
+
+    <string-array name="pref_app_lock_options">
+        <item>Vypnuto</item>
+        <item>Hned</item>
+        <item>1 min</item>
+        <item>30 min</item>
+    </string-array>
+    <string name="pref_scr_version_by_author_s">"v%1$s od <b><i>Zakir Sheikh</i></b>"</string>
+    <string name="buy_me_a_coffee">Kup mi kafe</string>
+    <string name="msg_support_gallery"><b>Galerie teprve začíná – a bude jen lepší.</b>
+    \nGalerie je open source a rychle roste. Podpořit ji můžete:
+        \n1. 🌍 Řekněte o ní dalším
+        \n2. 🔧 Hlaste chyby
+        \n3. ☕ Kupte autorovi kafe 😊
+    </string>
+    <string name="fuel">Podpořit</string>
+    <string name="viewer_scr_open_in_lens">Otevřít v Lens</string>
+    <string name="quick_share">Quick Share</string>
+    <string name="msg_viewer_scr_no_g_lens">Pro Lens nainstalujte aplikaci Google</string>
+    <string name="msg_files_quick_share_error">Pro tuto funkci nainstalujte Quick Share.</string>
+    <string name="none">Žádné</string>
+    <string name="properties">Vlastnosti</string>
+    <string name="pref_ambient_mode"><b>Ambientní režim</b><font color="grey">\nJemné světlo kolem prohlížené fotky jako v kině.</font></string>
+    <string name="authenticate">Ověřit</string>
+    <string name="confirm">Potvrdit</string>
+    <string name="msg_favourites_modify_d">Upravit %1$d položek v Oblíbených?</string>
+    <string name="add_your_language">Přidat jazyk</string>
+    <string name="wallpaper">Tapeta</string>
+    <string name="lens">Lens</string>
+    <string name="beam">Quick Share</string>
+    <string name="msg_playstore_encouragement"><b>Galerie v Obchodě Play</b>
+        <font color='grey'>\n✨ Oficiální verze z Obchodu Play s aktualizacemi a novinkami.</font>
+    </string>
 </resources>

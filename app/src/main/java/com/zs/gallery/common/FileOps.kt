@@ -85,7 +85,7 @@ object FileOps {
      * (Android only shows a folder once it contains a photo or video.)
      */
     suspend fun askNewFolder(activity: Activity): String? {
-        val name = askText(activity, "New folder", "", hint = "e.g. Trips or DCIM/Trips")
+        val name = askText(activity, tr("New folder", "Nová složka"), "", hint = tr("e.g. Trips or DCIM/Trips", "např. Výlety nebo DCIM/Výlety"))
             ?.trim()?.trim('/')?.replace(Regex("[\\\\:*?\"<>|]"), "_")
             ?.takeIf { it.isNotEmpty() } ?: return null
         val top = name.substringBefore('/')
@@ -167,14 +167,17 @@ object FileOps {
         note: String?, done: Int, placed: List<String>,
     ) {
         if (files.isEmpty()) return
-        val target = pickFolder(activity, if (move) "Move to" else "Copy to", folders, note)
+        val target = pickFolder(activity, if (move) tr("Move to", "Přesunout do") else tr("Copy to", "Kopírovat do"), folders, note)
         if (target == null) {
             // Gave up on the leftovers.
             if (note != null) {
                 val past = if (move) "Moved" else "Copied"
                 activity.toast(
-                    if (done == 0) "Nothing was ${past.lowercase()}"
-                    else "$past ${plural(done)}; ${plural(files.size)} stayed where they were"
+                    if (done == 0) tr("Nothing was ${past.lowercase()}", if (move) "Nic se nepřesunulo" else "Nic se nezkopírovalo")
+                    else tr(
+                        "$past ${plural(done)}; ${plural(files.size)} stayed where they were",
+                        "${if (move) "Přesunuto" else "Zkopírováno"}: ${plural(done)}; ${plural(files.size)} zůstává na místě"
+                    )
                 )
             }
             return
@@ -193,7 +196,7 @@ object FileOps {
         folders: List<com.zs.core.store.Folder>, done: Int, placed: List<String>,
     ): Boolean {
         if (move && !requestWrite(activity, files.map { it.mediaUri })) {
-            activity.toast("Not allowed to move these")
+            activity.toast(tr("Not allowed to move these", "Tyto položky nelze přesunout"))
             return false
         }
         askForNotifications(activity)
@@ -292,7 +295,7 @@ object FileOps {
         val mime = file.mimeType
         val exifFormat = mime == "image/jpeg" || mime == "image/webp"
         if (!exifFormat && mime != "image/png") {
-            activity.toast("This photo format can't be rotated")
+            activity.toast(tr("This photo format can't be rotated", "Tento formát fotky nejde otočit"))
             return false
         }
         if (!requestWrite(activity, listOf(file.mediaUri))) return false
@@ -320,7 +323,7 @@ object FileOps {
             }.getOrDefault(false)
         }
         if (ok) com.zs.core.coil.EditedMedia.mark(activity, file.id)
-        if (!ok) activity.toast("Couldn't rotate the photo")
+        if (!ok) activity.toast(tr("Couldn't rotate the photo", "Fotku se nepodařilo otočit"))
         // Old (unrotated) pictures must not come back from the in-memory cache.
         else coil3.SingletonImageLoader.get(activity).memoryCache?.clear()
         return ok
@@ -331,7 +334,7 @@ object FileOps {
         val dot = file.name.lastIndexOf('.')
         val base = if (dot > 0) file.name.substring(0, dot) else file.name
         val ext = if (dot > 0) file.name.substring(dot) else ""
-        val typed = askText(activity, "Rename", base)?.trim()
+        val typed = askText(activity, tr("Rename", "Přejmenovat"), base)?.trim()
             ?.replace('/', '_')?.takeIf { it.isNotEmpty() && it != base } ?: return false
         if (!requestWrite(activity, listOf(file.mediaUri))) return false
         val ok = withContext(Dispatchers.IO) {
@@ -342,9 +345,9 @@ object FileOps {
                 activity.contentResolver.update(file.mediaUri, values, null, null) > 0
             }.getOrDefault(false)
         }
-        activity.toast(if (ok) "Renamed to $typed$ext" else "Couldn't rename (name already taken?)")
+        activity.toast(if (ok) tr("Renamed to $typed$ext", "Přejmenováno na $typed$ext") else tr("Couldn't rename (name already taken?)", "Přejmenování se nepovedlo (název už existuje?)"))
         return ok
     }
 
-    private fun plural(n: Int) = if (n == 1) "1 item" else "$n items"
+    private fun plural(n: Int) = itemsText(n)
 }

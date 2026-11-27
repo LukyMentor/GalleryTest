@@ -18,6 +18,8 @@
 
 package com.zs.gallery.settings
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import com.zs.gallery.common.CrashLog
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
@@ -609,12 +611,18 @@ fun Settings(viewState: SettingsViewState) {
                     item(CONTENT_TYPE_HEADER) { GroupHeader(text = stringResource(id = R.string.appearance)) }
                     Appearence(viewState = viewState)
 
+                    // Language: Czech / English.
+                    if (com.zs.gallery.common.Lang.supported) {
+                        item(contentType = CONTENT_TYPE_HEADER) { GroupHeader(text = tr("Language", "Jazyk")) }
+                        item(contentType = "language") { LanguageCard() }
+                    }
+
                     // Media management: delete / move / rename without Android asking each time.
-                    item(contentType = CONTENT_TYPE_HEADER) { GroupHeader(text = "Deleting & moving") }
+                    item(contentType = CONTENT_TYPE_HEADER) { GroupHeader(text = tr("Deleting & moving", "Mazání a přesouvání")) }
                     item(contentType = "media_management") { MediaManagementCard() }
 
                     // Crash log (kept on the device; copy it to report a problem)
-                    item(contentType = CONTENT_TYPE_HEADER) { GroupHeader(text = "Crash log") }
+                    item(contentType = CONTENT_TYPE_HEADER) { GroupHeader(text = tr("Crash log", "Záznam o pádech")) }
                     item(contentType = "crash_log") { CrashLogCard() }
 
                     // AboutUs
@@ -644,6 +652,36 @@ fun Settings(viewState: SettingsViewState) {
     )
 }
 
+/** Like the phone / English / Čeština. */
+@Composable
+private fun LanguageCard() {
+    val context = LocalContext.current
+    val colors = AppTheme.colors
+    var chosen by remember { mutableStateOf(com.zs.gallery.common.Lang.current(context)) }
+    androidx.compose.foundation.layout.Column(
+        modifier = Modifier
+            .padding(horizontal = CP.normal, vertical = CP.small)
+            .fillMaxWidth()
+            .background(colors.background(2.dp), RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Label(tr("App language", "Jazyk aplikace"), style = AppTheme.typography.body1, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for ((tag, label) in listOf(
+                com.zs.gallery.common.Lang.SYSTEM to tr("Like the phone", "Podle telefonu"),
+                com.zs.gallery.common.Lang.ENGLISH to "English",
+                com.zs.gallery.common.Lang.CZECH to "Čeština",
+            ))
+                com.zs.gallery.files.FilterChip(label, chosen == tag) {
+                    if (chosen == tag) return@FilterChip
+                    chosen = tag
+                    com.zs.gallery.common.Lang.set(context, tag)
+                }
+        }
+    }
+}
+
 /** Shows the last crash (if any) with buttons to copy or clear it. */
 @Composable
 private fun CrashLogCard() {
@@ -660,7 +698,7 @@ private fun CrashLogCard() {
     ) {
         val text = report
         if (text == null) {
-            Label("No crashes recorded.", style = AppTheme.typography.body2)
+            Label(tr("No crashes recorded.", "Žádné pády zatím."), style = AppTheme.typography.body2)
             return@Column
         }
         // First lines: time, version, device and the error itself.
@@ -670,12 +708,12 @@ private fun CrashLogCard() {
             maxLines = 6
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            com.zs.gallery.files.FilterChip("Copy", true) {
+            com.zs.gallery.files.FilterChip(tr("Copy", "Kopírovat"), true) {
                 val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
                 clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Gallery M crash", text))
-                android.widget.Toast.makeText(context, "Crash log copied", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(context, tr("Crash log copied", "Záznam o pádu zkopírován"), android.widget.Toast.LENGTH_SHORT).show()
             }
-            com.zs.gallery.files.FilterChip("Clear", false) {
+            com.zs.gallery.files.FilterChip(tr("Clear", "Smazat"), false) {
                 CrashLog.clear(context)
                 report = null
             }
@@ -712,18 +750,18 @@ private fun MediaManagementCard() {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Label("Delete without asking", style = AppTheme.typography.body1, fontWeight = FontWeight.SemiBold)
+        Label(tr("Delete without asking", "Mazat bez ptaní"), style = AppTheme.typography.body1, fontWeight = FontWeight.SemiBold)
         Label(
             when {
-                !supported -> "Needs Android 12 or newer."
-                allowed -> "On: deleting, moving and renaming happen straight away (deleted photos still go to the Recycle Bin)."
-                else -> "Android asks for confirmation every time you delete, move or rename. Allow \"Media management\" to skip that."
+                !supported -> tr("Needs Android 12 or newer.", "Vyžaduje Android 12 nebo novější.")
+                allowed -> tr("On: deleting, moving and renaming happen straight away (deleted photos still go to the Recycle Bin).", "Zapnuto: mazání, přesouvání a přejmenování proběhne hned (smazané fotky dál jdou do koše).")
+                else -> tr("Android asks for confirmation every time you delete, move or rename. Allow \"Media management\" to skip that.", "Android se ptá při každém mazání, přesunu či přejmenování. Povolte „Správu médií“ a ptát se nebude.")
             },
             style = AppTheme.typography.body2,
             color = colors.onBackground.copy(alpha = 0.75f)
         )
         if (supported)
-            com.zs.gallery.files.FilterChip(if (allowed) "Change in system settings" else "Allow", !allowed) {
+            com.zs.gallery.files.FilterChip(if (allowed) tr("Change in system settings", "Změnit v nastavení systému") else tr("Allow", "Povolit"), !allowed) {
                 val intent = android.content.Intent(
                     android.provider.Settings.ACTION_REQUEST_MANAGE_MEDIA,
                     android.net.Uri.parse("package:${context.packageName}")

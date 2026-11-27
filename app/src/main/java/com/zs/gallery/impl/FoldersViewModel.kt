@@ -18,6 +18,8 @@
 
 package com.zs.gallery.impl
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import com.zs.gallery.settings.Settings
 
 import kotlinx.coroutines.flow.StateFlow
@@ -79,7 +81,7 @@ class FoldersViewModel(provider: MediaProvider) : KoinViewModel(), FoldersViewSt
         val hiding = path !in current
         preferences[Settings.KEY_HIDDEN_FOLDERS] = if (hiding) current + path else current - path
         showPlatformToast(
-            if (hiding) "Hidden from Photos (still here in Folders)" else "Shown in Photos again"
+            if (hiding) tr("Hidden from Photos (still here in Folders)", "Skryto ve Fotkách (ve Složkách zůstává)") else tr("Shown in Photos again", "Znovu ve Fotkách")
         )
     }
 
@@ -135,7 +137,7 @@ class FoldersViewModel(provider: MediaProvider) : KoinViewModel(), FoldersViewSt
         }
         val withPins = if (pinnedFolders.isEmpty()) result
         else LinkedHashMap<Any, List<Folder>>().apply {
-            put("Pinned", pinnedFolders)
+            put(tr("Pinned", "Připnuté"), pinnedFolders)
             for ((k, v) in result) put(k, v)
         }
         // This should be safe

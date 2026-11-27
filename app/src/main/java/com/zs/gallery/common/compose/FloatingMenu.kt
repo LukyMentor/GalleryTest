@@ -18,6 +18,8 @@
 
 package com.zs.gallery.common.compose
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
@@ -227,7 +229,7 @@ inline fun RowScope.OverflowMenu(
         Surface(color = AppTheme.colors.accent, shape = AppTheme.shapes.small) {
             Icon(
                 Icons.Outlined.MoreVert,
-                contentDescription = "More actions",
+                contentDescription = tr("More actions", "Další akce"),
                 modifier = Modifier.padding(vertical = 4.dp)
             )
         }

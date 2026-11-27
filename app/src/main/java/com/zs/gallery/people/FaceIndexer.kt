@@ -1,5 +1,7 @@
 package com.zs.gallery.people
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import android.Manifest
 import android.content.ContentUris
 import android.content.Context
@@ -123,11 +125,11 @@ object FaceIndexer {
         _status.update { it.copy(paused = paused, videos = scansVideos(app)) }
         if (paused || job?.isActive == true) return
         if (!hasPermission(app)) {
-            _status.update { it.copy(error = "No access to photos yet") }
+            _status.update { it.copy(error = tr("No access to photos yet", "Zatím bez přístupu k fotkám")) }
             return
         }
         job = scope.launch {
-            _status.update { it.copy(running = true, error = null, note = "Looking for new photos…") }
+            _status.update { it.copy(running = true, error = null, note = tr("Looking for new photos…", "Hledám nové fotky…")) }
             try {
                 run(app)
             } catch (e: CancellationException) {
@@ -144,11 +146,11 @@ object FaceIndexer {
     fun regroup(context: Context) {
         val app = context.applicationContext
         scope.launch {
-            _status.update { it.copy(note = "Re-grouping…") }
+            _status.update { it.copy(note = tr("Re-grouping…", "Přeskupuji…")) }
             val store = store(app)
             store.resetGrouping()
             group(store)
-            _status.update { it.copy(note = "Re-grouped") }
+            _status.update { it.copy(note = tr("Re-grouped", "Přeskupeno")) }
         }
     }
 
@@ -158,7 +160,7 @@ object FaceIndexer {
         job?.cancel()
         scope.launch {
             store(app).clearAll()
-            _status.update { Status(paused = isPaused(app), note = "Reset - scanning again") }
+            _status.update { Status(paused = isPaused(app), note = tr("Reset - scanning again", "Vynulováno – hledám znovu")) }
             changed()
             start(app)
         }
@@ -239,7 +241,7 @@ object FaceIndexer {
         _status.update {
             it.copy(
                 total = photos.size, scanned = photos.size - todo.size,
-                faces = store.faceCount(), note = if (todo.isEmpty()) "Up to date" else "Scanning"
+                faces = store.faceCount(), note = if (todo.isEmpty()) tr("Up to date", "Vše prohledáno") else tr("Scanning", "Prohledávám")
             )
         }
         val videoTodo = videos.filter { known[it.id] != it.modified }
@@ -290,7 +292,7 @@ object FaceIndexer {
                 coroutineContext.ensureActive()
                 kotlinx.coroutines.yield()
                 val start = SystemClock.elapsedRealtime()
-                _status.update { it.copy(current = video.name, note = "Scanning videos") }
+                _status.update { it.copy(current = video.name, note = tr("Scanning videos", "Prohledávám videa")) }
                 val faces = runCatching { processVideo(context, engine, video.id) }.getOrDefault(emptyList())
                 val ids = store.saveScan(video.id, video.modified, faces.map { it.first }, kind = 1)
                 ids.forEachIndexed { i, id -> runCatching { store.saveCrop(id, faces[i].second) } }
@@ -309,7 +311,7 @@ object FaceIndexer {
             }
             group(store)
             store.dropOrphanCrops()
-            _status.update { it.copy(note = "Up to date") }
+            _status.update { it.copy(note = tr("Up to date", "Vše prohledáno")) }
         } finally {
             engine.close()
         }

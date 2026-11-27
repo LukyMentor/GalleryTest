@@ -20,6 +20,8 @@
 
 package com.zs.gallery.viewer
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import android.os.Build
 import android.util.Log
 import androidx.activity.compose.BackHandler
@@ -610,7 +612,7 @@ fun MediaViewer(viewState: MediaViewerViewState) {
                 navigationIcon = {
                     IconButton(
                         Icons.Outlined.ReplyAll,
-                        contentDescription = "Back",
+                        contentDescription = tr("Back", "Zpět"),
                         onClick = { onRequest(EVENT_BACK_PRESS) }
                     )
                 },

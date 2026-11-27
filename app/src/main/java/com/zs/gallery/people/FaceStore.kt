@@ -1,5 +1,7 @@
 package com.zs.gallery.people
 
+import com.zs.gallery.common.tr
+import com.zs.gallery.common.photosText
 import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
@@ -37,8 +39,8 @@ class Person(
 /** "12 photos · 3 videos" (parts that are 0 left out). */
 fun countLabel(images: Int, videos: Int): String {
     val parts = ArrayList<String>()
-    if (images > 0 || videos == 0) parts += if (images == 1) "1 photo" else "$images photos"
-    if (videos > 0) parts += if (videos == 1) "1 video" else "$videos videos"
+    if (images > 0 || videos == 0) parts += photosText(images)
+    if (videos > 0) parts += if (com.zs.gallery.common.Lang.czech) "$videos " + com.zs.gallery.common.czPlural(videos, "video", "videa", "videí") else if (videos == 1) "1 video" else "$videos videos"
     return parts.joinToString(" · ")
 }
 
