@@ -54,6 +54,7 @@ import androidx.compose.material.icons.outlined.NorthEast
 import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -632,7 +633,7 @@ private fun TextEntry(
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.72f))
             .pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume() } }
-            .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.systemBars)
+            .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.Companion.systemBars)
             .imePadding()
     ) {
         androidx.compose.foundation.text.BasicTextField(
