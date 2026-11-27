@@ -143,7 +143,7 @@ abstract class KoinViewModel : ScopeViewModel() {
                 // Display an error message to the user, providing context and error details.
                 // (Never let the error message itself crash the app.)
                 runCatching { report(e.message ?: getText(R.string.msg_unknown_error)) }
-                    .onFailure { Log.w(TAG, "couldn't report", e) }
+                    .onFailure { Log.w("KoinViewModel", "couldn't report", e) }
 //                if (report == SnackbarResult.ActionPerformed)
 //                    analytics.record(e)
             }
