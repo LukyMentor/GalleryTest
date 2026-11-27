@@ -135,10 +135,15 @@ abstract class KoinViewModel : ScopeViewModel() {
     ) {
         viewModelScope.launch(context, start) {
             try { block() }
+            // Left the screen while an action was still running (folder sheet, permission
+            // dialog...): that's a cancel, not an error - and the screen's resources are gone.
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) {
                 // Handle any exceptions that occurred during the coroutine execution.
                 // Display an error message to the user, providing context and error details.
-                val report = report(e.message ?: getText(R.string.msg_unknown_error))
+                // (Never let the error message itself crash the app.)
+                runCatching { report(e.message ?: getText(R.string.msg_unknown_error)) }
+                    .onFailure { Log.w(TAG, "couldn't report", e) }
 //                if (report == SnackbarResult.ActionPerformed)
 //                    analytics.record(e)
             }
